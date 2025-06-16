@@ -101,12 +101,34 @@ EditorJumper 智能处理制表符（Tab）字符的宽度差异，确保在 Jet
 
 ### 问：在Mac上使用EditorJumper时，跳转到IntelliJ IDEA没有反应或出现错误怎么办？
 
-答：如果在Mac上使用EditorJumper时，跳转到IntelliJ IDEA或其他JetBrains IDE没有反应或出现错误，可以尝试以下步骤：
-
+#### 方法一：
 1. 打开IntelliJ IDEA。
 2. 在菜单栏中选择`Tools`。
 3. 点击`Create Command-line Launcher...`。
 4. 按照提示完成设置。
+
+#### 方法二：
+1. 打开 EditorJumper 设置（Ctrl+, 或 Cmd+,）。
+2. 点击在 settings.json 中编辑。
+3. 打开访达-应用程序-你想跳转的IDE（如：IDEA）-右键-显示包内容-‘Contents/MacOS/idea’。
+4. 右键底部路径：idea，点击 `将idea拷贝为路径名称`。
+5. 编辑`editorjumper.ideConfigurations`中对应IDE的配置，将拷贝的路径粘贴至`commandPath`的value处。
+
+*eg.*
+```json
+{
+  "editorjumper.ideConfigurations": [
+      
+  
+    {
+      "name": "IDEA",
+      "isCustom": false,
+      "hidden": false,
+      "commandPath": "/Applications/IntelliJ IDEA.app/Contents/MacOS/idea"
+    }
+  ]
+}
+```
 
 这样可以确保命令行启动器正确配置，解决跳转问题。
 <div align="center">
