@@ -269,7 +269,10 @@ async function activate(context) {
 
 		// 获取项目根目录
 		let projectPath;
-		const jetBrainsRoot = config.get('jetBrainsRootProjectPath');
+		const jetBrainsRootInspect = config.inspect('jetBrainsRootProjectPath');
+		const jetBrainsRoot = (jetBrainsRootInspect && typeof jetBrainsRootInspect.workspaceValue === 'string')
+			? jetBrainsRootInspect.workspaceValue
+			: '';
 		if (jetBrainsRoot && typeof jetBrainsRoot === 'string' && jetBrainsRoot.trim() !== '') {
 			// 已配置 JetBrains 根项目路径时，统一使用该路径（多模块/多工作目录场景）
 			projectPath = path.normalize(jetBrainsRoot.trim());

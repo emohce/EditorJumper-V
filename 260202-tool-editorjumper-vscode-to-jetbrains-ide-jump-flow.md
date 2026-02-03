@@ -70,7 +70,7 @@
    - 行号：`selection.active.line + 1`
    - 列号：`selection.active.character`（注意：此处未 +1）
 4. 解析项目根目录 `projectPath`：
-   - **若已配置 `editorjumper.jetBrainsRootProjectPath`**（非空）：`projectPath = path.normalize(jetBrainsRootProjectPath)`，用于多模块/多工作目录场景（各工作目录已在 Jet 根项目下）。
+   - **若已在工作区级别配置 `editorjumper.jetBrainsRootProjectPath`**（非空）：`projectPath = path.normalize(jetBrainsRootProjectPath)`，用于多模块/多工作目录场景（各工作目录已在 Jet 根项目下）。
    - **若未配置**：有 workspace folder 时默认取第一个；多 workspace folder 且有 `filePath` 时用 `getWorkspaceFolder(fileUri)` 命中包含该文件的 folder；无 workspace folder 时报错并退出。
 5. 解析 `commandPath`：
    - 优先 `ideConfig.commandPath`
@@ -97,8 +97,8 @@
    - `removeIDE`：不允许删除当前选中 IDE
    - `selectIDE`：更新 `selectedIDE`
    - `selectPath`：弹出文件选择对话框，将结果回传到 Webview
-   - `selectPathForRootProject`：弹出目录选择对话框，将选中路径写入 `editorjumper.jetBrainsRootProjectPath` 并刷新 Webview
-   - `saveRootProjectPath`：将 Webview 中“JetBrains 根项目路径”输入框的值写入 `editorjumper.jetBrainsRootProjectPath` 并刷新 Webview
+   - `selectPathForRootProject`：弹出目录选择对话框，将选中路径写入 **工作区级别** `editorjumper.jetBrainsRootProjectPath` 并刷新 Webview
+   - `saveRootProjectPath`：将 Webview 中“JetBrains 根项目路径”输入框的值写入 **工作区级别** `editorjumper.jetBrainsRootProjectPath` 并刷新 Webview
 4. 每次配置变更后：重渲染 Webview，并执行 `editorjumper.updateStatusBar`
 
 ## 关键分支
@@ -120,7 +120,7 @@
 ## 可选：JetBrains 根项目路径
 - **配置键**：`editorjumper.jetBrainsRootProjectPath`（string，默认空）
 - **用途**：多模块或多工作目录场景下，VS Code 内各工作目录已位于同一 JetBrains 根项目（含 `.idea` 的目录）下时，可指定该根项目路径；跳转时统一以此路径作为 `projectPath` 传给 IDE，从而在 JetBrains 内打开同一项目并定位到对应文件。
-- **解析优先级**：若已配置且非空，则 `projectPath = path.normalize(jetBrainsRootProjectPath)`；否则按原逻辑使用 workspace folder。
+- **解析优先级**：仅当该配置存在于 **工作区级别** 且非空时，才 `projectPath = path.normalize(jetBrainsRootProjectPath)`；否则按原逻辑使用 workspace folder。（忽略 User Settings 全局值，避免跨工作区串扰）
 - **配置入口**：EditorJumper 配置面板顶部“JetBrains 根项目路径（可选）”输入框 + “浏览目录”/“Save”；也可在 VS Code 设置或工作区 JSON 中直接编辑。
 
 ## 数据流（输入 / 状态 / 输出）

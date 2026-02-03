@@ -179,14 +179,14 @@ function createConfigurationPanel(context) {
                         };
                         const folderResult = await vscode.window.showOpenDialog(folderOptions);
                         if (folderResult && folderResult[0]) {
-                            await config.update('jetBrainsRootProjectPath', folderResult[0].fsPath, true);
+                            await config.update('jetBrainsRootProjectPath', folderResult[0].fsPath, vscode.ConfigurationTarget.Workspace);
                             const rootUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
                             configPanel.webview.html = getWebviewContent(rootUpdatedConfig.get('ideConfigurations'));
                         }
                         break;
                     case 'saveRootProjectPath':
                         const pathToSave = (message.path != null && message.path !== undefined) ? String(message.path) : '';
-                        await config.update('jetBrainsRootProjectPath', pathToSave, true);
+                        await config.update('jetBrainsRootProjectPath', pathToSave, vscode.ConfigurationTarget.Workspace);
                         vscode.window.showInformationMessage('JetBrains root project path saved.');
                         const saveUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
                         configPanel.webview.html = getWebviewContent(saveUpdatedConfig.get('ideConfigurations'));
@@ -233,7 +233,11 @@ function getWebviewContent(ideConfigurations) {
     // 是否是macOS平台
     const isMac = platform === 'darwin';
 
-    const jetBrainsRootProjectPath = (config.get('jetBrainsRootProjectPath') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const rootProjectPathInspect = config.inspect('jetBrainsRootProjectPath');
+    const jetBrainsRootProjectPathRaw = (rootProjectPathInspect && typeof rootProjectPathInspect.workspaceValue === 'string')
+        ? rootProjectPathInspect.workspaceValue
+        : '';
+    const jetBrainsRootProjectPath = (jetBrainsRootProjectPathRaw || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
     return `<!DOCTYPE html>
     <html>
