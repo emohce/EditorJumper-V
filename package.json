@@ -173,6 +173,11 @@
               }
             }
           }
+        },
+        "editorjumper.jetBrainsRootProjectPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional JetBrains root project path (directory containing .idea). Used for multi-module or multi-root workspaces; when set, jump opens this project. Leave empty to use workspace folder as project path."
         }
       }
     }

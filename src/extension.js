@@ -269,24 +269,29 @@ async function activate(context) {
 
 		// 获取项目根目录
 		let projectPath;
-
-		// 获取当前工作区文件夹
-		if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-			// 如果有工作区文件夹，使用第一个工作区文件夹的路径
-			projectPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
-
-			// 如果有多个工作区文件夹，并且有选中的文件，尝试找到包含该文件的工作区文件夹
-			if (vscode.workspace.workspaceFolders.length > 1 && filePath) {
-				const fileUri = vscode.Uri.file(filePath);
-				const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
-				if (workspaceFolder) {
-					projectPath = workspaceFolder.uri.fsPath;
-				}
-			}
+		const jetBrainsRoot = config.get('jetBrainsRootProjectPath');
+		if (jetBrainsRoot && typeof jetBrainsRoot === 'string' && jetBrainsRoot.trim() !== '') {
+			// 已配置 JetBrains 根项目路径时，统一使用该路径（多模块/多工作目录场景）
+			projectPath = path.normalize(jetBrainsRoot.trim());
 		} else {
-			// 如果没有工作区文件夹，提示用户并返回
-			vscode.window.showErrorMessage('No workspace folder is open. Please open a project first.');
-			return;
+			// 未配置时保持原有逻辑：以工作区目录为 projectPath
+			if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+				// 如果有工作区文件夹，使用第一个工作区文件夹的路径
+				projectPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+
+				// 如果有多个工作区文件夹，并且有选中的文件，尝试找到包含该文件的工作区文件夹
+				if (vscode.workspace.workspaceFolders.length > 1 && filePath) {
+					const fileUri = vscode.Uri.file(filePath);
+					const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
+					if (workspaceFolder) {
+						projectPath = workspaceFolder.uri.fsPath;
+					}
+				}
+			} else {
+				// 如果没有工作区文件夹，提示用户并返回
+				vscode.window.showErrorMessage('No workspace folder is open. Please open a project first.');
+				return;
+			}
 		}
 
 		// 获取命令路径

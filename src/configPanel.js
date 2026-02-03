@@ -169,6 +169,28 @@ function createConfigurationPanel(context) {
                             });
                         }
                         break;
+                    case 'selectPathForRootProject':
+                        const folderOptions = {
+                            canSelectFiles: false,
+                            canSelectFolders: true,
+                            canSelectMany: false,
+                            openLabel: 'Select Folder',
+                            title: 'Select JetBrains Root Project Path (directory containing .idea)'
+                        };
+                        const folderResult = await vscode.window.showOpenDialog(folderOptions);
+                        if (folderResult && folderResult[0]) {
+                            await config.update('jetBrainsRootProjectPath', folderResult[0].fsPath, true);
+                            const rootUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
+                            configPanel.webview.html = getWebviewContent(rootUpdatedConfig.get('ideConfigurations'));
+                        }
+                        break;
+                    case 'saveRootProjectPath':
+                        const pathToSave = (message.path != null && message.path !== undefined) ? String(message.path) : '';
+                        await config.update('jetBrainsRootProjectPath', pathToSave, true);
+                        vscode.window.showInformationMessage('JetBrains root project path saved.');
+                        const saveUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
+                        configPanel.webview.html = getWebviewContent(saveUpdatedConfig.get('ideConfigurations'));
+                        break;
                 }
             } catch (error) {
                 console.error('Error handling message:', error);
@@ -210,6 +232,8 @@ function getWebviewContent(ideConfigurations) {
 
     // 是否是macOS平台
     const isMac = platform === 'darwin';
+
+    const jetBrainsRootProjectPath = (config.get('jetBrainsRootProjectPath') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
     return `<!DOCTYPE html>
     <html>
@@ -298,6 +322,15 @@ function getWebviewContent(ideConfigurations) {
     </head>
     <body>
         <h2>EditorJumper Configurations</h2>
+        <div class="form-group command-group" style="margin-bottom: 16px;">
+            <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Directory containing .idea (multi-module / multi-root)">
+                <button onclick="selectPathForRootProject()">浏览目录</button>
+                <button onclick="saveRootProjectPath()">Save</button>
+            </div>
+            <div class="note">Leave empty to use workspace folder as project path.</div>
+        </div>
         <div class="action-buttons">
             <button onclick="showAddForm()">Add New IDE</button>
         </div>
@@ -590,11 +623,33 @@ function getWebviewContent(ideConfigurations) {
                 });
             }
 
+            function selectPathForRootProject() {
+                if (!vscode) {
+                    alert('VS Code API not initialized. Please reload the window.');
+                    return;
+                }
+                vscode.postMessage({ command: 'selectPathForRootProject' });
+            }
+
+            function saveRootProjectPath() {
+                if (!vscode) {
+                    alert('VS Code API not initialized. Please reload the window.');
+                    return;
+                }
+                const el = document.getElementById('rootProjectPath');
+                const path = el ? el.value : '';
+                vscode.postMessage({ command: 'saveRootProjectPath', path: path });
+            }
+
             window.addEventListener('message', event => {
                 const message = event.data;
                 switch (message.command) {
                     case 'setPath':
                         document.getElementById('command').value = message.path;
+                        break;
+                    case 'setRootProjectPath':
+                        const rootEl = document.getElementById('rootProjectPath');
+                        if (rootEl) rootEl.value = message.path || '';
                         break;
                     case 'highlightIDE':
                         const ideElement = document.getElementById('ide-' + message.ideName);
