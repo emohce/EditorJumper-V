@@ -146,7 +146,7 @@ async function activate(context) {
 		
 		// 添加配置选项
 		items.push({
-			label: '$(gear) Configure EditorJumper',
+			label: '$(gear) Configure Ez-EditorJumper',
 			description: 'Open configuration panel',
 			name: 'configure'
 		});
@@ -658,7 +658,7 @@ async function activate(context) {
 		}
 
 		if (!slot.target) {
-			vscode.window.showErrorMessage(`Slot ${slotIndex + 1} has no target editor. Please configure it via "EditorJumper: Configure Slot Target".`);
+			vscode.window.showErrorMessage(`Slot ${slotIndex + 1} has no target editor. Please configure it via "Ez-EditorJumper: Configure Slot Target".`);
 			return;
 		}
 

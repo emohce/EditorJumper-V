@@ -1,17 +1,9 @@
 {
-  "name": "editorjumper",
-  "displayName": "EditorJumper",
+  "name": "ez-editorjumper",
+  "displayName": "Ez-EditorJumper",
   "description": "A VS Code extension that allows you to seamlessly jump between JetBrains IDEs and other popular code editors (such as VS Code, Cursor, Trae, and Windsurf). It maintains your cursor position and editing context, greatly improving development efficiency in multi-editor environments.",
   "version": "1.2.0",
   "publisher": "wanniwa",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/wanniwa/EditorJumper-V"
-  },
-  "bugs": {
-    "url": "https://github.com/wanniwa/EditorJumper-V/issues"
-  },
-  "homepage": "https://github.com/wanniwa/EditorJumper-V#readme",
   "engines": {
     "vscode": "^1.81.0"
   },
@@ -50,31 +42,31 @@
       },
       {
         "command": "editorjumper.configureIDE",
-        "title": "Configure EditorJumper"
+        "title": "Configure Ez-EditorJumper"
       },
       {
         "command": "editorjumper.openSlot1",
-        "title": "EditorJumper: Open in Slot 1 Editor"
+        "title": "Ez-EditorJumper: Open in Slot 1 Editor"
       },
       {
         "command": "editorjumper.openSlot2",
-        "title": "EditorJumper: Open in Slot 2 Editor"
+        "title": "Ez-EditorJumper: Open in Slot 2 Editor"
       },
       {
         "command": "editorjumper.openSlot3",
-        "title": "EditorJumper: Open in Slot 3 Editor"
+        "title": "Ez-EditorJumper: Open in Slot 3 Editor"
       },
       {
         "command": "editorjumper.openInEditor",
-        "title": "EditorJumper: Open in Editor..."
+        "title": "Ez-EditorJumper: Open in Editor..."
       },
       {
         "command": "editorjumper.configureSlot",
-        "title": "EditorJumper: Configure Slot Target"
+        "title": "Ez-EditorJumper: Configure Slot Target"
       },
       {
         "command": "editorjumper.jumpBack",
-        "title": "EditorJumper: Jump Back to Source Editor"
+        "title": "Ez-EditorJumper: Jump Back to Source Editor"
       }
     ],
     "keybindings": [
@@ -124,7 +116,7 @@
       ]
     },
     "configuration": {
-      "title": "EditorJumper",
+      "title": "Ez-EditorJumper",
       "properties": {
         "editorjumper.selectedIDE": {
           "type": "string",

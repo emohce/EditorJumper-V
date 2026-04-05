@@ -18,7 +18,7 @@ function createConfigurationPanel(context) {
 
     configPanel = vscode.window.createWebviewPanel(
         'ideConfiguration',
-        'EditorJumper Configuration',
+        'Ez-EditorJumper Configuration',
         vscode.ViewColumn.One,
         {
             enableScripts: true,
@@ -421,7 +421,7 @@ function getWebviewContent(ideConfigurations) {
         </style>
     </head>
     <body>
-        <h2>EditorJumper Configurations</h2>
+        <h2>Ez-EditorJumper Configurations</h2>
         <div class="form-group command-group" style="margin-bottom: 16px;">
             <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
             <div style="display: flex; gap: 10px; align-items: center;">
