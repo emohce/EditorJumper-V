@@ -51,6 +51,30 @@
       {
         "command": "editorjumper.configureIDE",
         "title": "Configure EditorJumper"
+      },
+      {
+        "command": "editorjumper.openSlot1",
+        "title": "EditorJumper: Open in Slot 1 Editor"
+      },
+      {
+        "command": "editorjumper.openSlot2",
+        "title": "EditorJumper: Open in Slot 2 Editor"
+      },
+      {
+        "command": "editorjumper.openSlot3",
+        "title": "EditorJumper: Open in Slot 3 Editor"
+      },
+      {
+        "command": "editorjumper.openInEditor",
+        "title": "EditorJumper: Open in Editor..."
+      },
+      {
+        "command": "editorjumper.configureSlot",
+        "title": "EditorJumper: Configure Slot Target"
+      },
+      {
+        "command": "editorjumper.jumpBack",
+        "title": "EditorJumper: Jump Back to Source Editor"
       }
     ],
     "keybindings": [
@@ -61,6 +85,18 @@
       {
         "command": "editorjumper.openInJetBrainsFast",
         "key": "shift+alt+p"
+      },
+      {
+        "command": "editorjumper.openSlot2",
+        "key": "shift+alt+i"
+      },
+      {
+        "command": "editorjumper.openSlot3",
+        "key": "shift+alt+u"
+      },
+      {
+        "command": "editorjumper.jumpBack",
+        "key": "shift+alt+b"
       }
     ],
     "menus": {
@@ -69,11 +105,20 @@
           "command": "editorjumper.openInJetBrains",
           "group": "navigation",
           "when": "editorTextFocus"
+        },
+        {
+          "command": "editorjumper.openSlot2",
+          "group": "navigation",
+          "when": "editorTextFocus"
         }
       ],
       "explorer/context": [
         {
           "command": "editorjumper.openInJetBrains",
+          "group": "navigation"
+        },
+        {
+          "command": "editorjumper.openSlot2",
           "group": "navigation"
         }
       ]
@@ -178,6 +223,78 @@
           "type": "string",
           "default": "",
           "description": "Optional JetBrains root project path (directory containing .idea). Used for multi-module or multi-root workspaces; when set, jump opens this project. Leave empty to use workspace folder as project path."
+        },
+        "editorjumper.slotTargets": {
+          "type": "array",
+          "default": [
+            { "slot": 1, "type": "jetbrains", "target": "" },
+            { "slot": 2, "type": "vscode-app", "target": "" },
+            { "slot": 3, "type": "vscode-app", "target": "" }
+          ],
+          "description": "Shortcut slot targets. Each slot has a type (jetbrains or vscode-app) and a target editor name. Slot 1 defaults to selected JetBrains IDE, Slot 2 auto-detects peer editor.",
+          "items": {
+            "type": "object",
+            "required": ["slot", "type", "target"],
+            "properties": {
+              "slot": {
+                "type": "integer",
+                "description": "Slot number (1, 2, or 3)"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["jetbrains", "vscode-app"],
+                "description": "Editor type: jetbrains or vscode-app"
+              },
+              "target": {
+                "type": "string",
+                "description": "Target editor name (e.g. IDEA, Cursor, Windsurf)"
+              }
+            }
+          }
+        },
+        "editorjumper.vscodeAppConfigurations": {
+          "type": "array",
+          "default": [
+            { "name": "Visual Studio Code", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "Cursor", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "Windsurf", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "Trae", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "Void", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "Kiro", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "Qoder", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "CatPawAI", "commandPath": null, "isCustom": false, "hidden": false },
+            { "name": "Antigravity", "commandPath": null, "isCustom": false, "hidden": false }
+          ],
+          "description": "Configured VSCode-rooted editors",
+          "items": {
+            "type": "object",
+            "required": ["name", "isCustom", "hidden"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Display name for the editor"
+              },
+              "isCustom": {
+                "type": "boolean",
+                "description": "Whether this is a custom editor",
+                "default": false
+              },
+              "hidden": {
+                "type": "boolean",
+                "description": "Whether to hide this editor in the selection menu",
+                "default": false
+              },
+              "commandPath": {
+                "type": ["string", "null"],
+                "description": "Command or path to open the editor"
+              }
+            }
+          }
+        },
+        "editorjumper.jumpBackSource": {
+          "type": "string",
+          "default": "",
+          "description": "Internal: source editor name for jump-back. Automatically set when jumping to another editor."
         }
       }
     }

@@ -116,7 +116,71 @@ const defaultIDEPaths = {
     }
 };
 
+// VSCode-rooted app 统一配置
+const vscodeAppConfigs = {
+    'Visual Studio Code': {
+        command: { darwin: 'code', win32: 'Code', linux: 'code' },
+        macAppName: 'Visual Studio Code',
+        urlScheme: 'vscode'
+    },
+    'Cursor': {
+        command: { darwin: 'cursor', win32: 'Cursor', linux: 'cursor' },
+        macAppName: 'Cursor',
+        urlScheme: 'cursor'
+    },
+    'Windsurf': {
+        command: { darwin: 'windsurf', win32: 'Windsurf', linux: 'windsurf' },
+        macAppName: 'Windsurf',
+        urlScheme: 'windsurf'
+    },
+    'Trae': {
+        command: { darwin: 'trae', win32: 'Trae', linux: 'trae' },
+        macAppName: 'Trae',
+        urlScheme: 'trae'
+    },
+    'Void': {
+        command: { darwin: 'void', win32: 'void', linux: 'void' },
+        macAppName: 'Void',
+        urlScheme: 'void'
+    },
+    'Kiro': {
+        command: { darwin: 'kiro', win32: 'kiro', linux: 'kiro' },
+        macAppName: 'Kiro',
+        urlScheme: 'kiro'
+    },
+    'Qoder': {
+        command: { darwin: 'qoder', win32: 'qoder', linux: 'qoder' },
+        macAppName: 'Qoder',
+        urlScheme: 'qoder'
+    },
+    'CatPawAI': {
+        command: { darwin: 'CatPawAI', win32: 'CatPawAI', linux: 'CatPawAI' },
+        macAppName: 'CatPawAI',
+        urlScheme: 'catpaw'
+    },
+    'Antigravity': {
+        command: { darwin: 'antigravity', win32: 'antigravity', linux: 'antigravity' },
+        macAppName: 'Antigravity',
+        urlScheme: 'antigravity'
+    }
+};
+
+// Slot 2 智能对等编辑器映射
+const smartPeerMap = {
+    'Cursor': 'Windsurf',
+    'Windsurf': 'Cursor',
+    'Visual Studio Code': 'Cursor',
+    'Trae': 'Cursor',
+    'Void': 'Cursor',
+    'Kiro': 'Cursor',
+    'Qoder': 'Cursor',
+    'CatPawAI': 'Cursor',
+    'Antigravity': 'Cursor'
+};
+
 // 导出统一配置
 module.exports = defaultIDEPaths;
 module.exports.ideConfigs = ideConfigs;
-module.exports.ideAppNames = ideAppNames; 
+module.exports.ideAppNames = ideAppNames;
+module.exports.vscodeAppConfigs = vscodeAppConfigs;
+module.exports.smartPeerMap = smartPeerMap;

@@ -191,6 +191,89 @@ function createConfigurationPanel(context) {
                         const saveUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
                         configPanel.webview.html = getWebviewContent(saveUpdatedConfig.get('ideConfigurations'));
                         break;
+                    case 'updateSlot':
+                        const slotTargets = config.get('slotTargets') || [];
+                        const slotIdx = message.slotIndex;
+                        if (slotIdx >= 0 && slotIdx < slotTargets.length) {
+                            slotTargets[slotIdx] = {
+                                slot: slotIdx + 1,
+                                type: message.slotType,
+                                target: message.slotTarget
+                            };
+                            await config.update('slotTargets', slotTargets, true);
+                            vscode.window.showInformationMessage(`Slot ${slotIdx + 1} → ${message.slotTarget} (${message.slotType})`);
+                        }
+                        const slotUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
+                        configPanel.webview.html = getWebviewContent(slotUpdatedConfig.get('ideConfigurations'));
+                        vscode.commands.executeCommand('editorjumper.updateStatusBar');
+                        break;
+
+                    case 'addVscodeApp':
+                        const newApp = message.app;
+                        const vscodeApps = config.get('vscodeAppConfigurations') || [];
+                        const existingApp = vscodeApps.find(a => a.name === newApp.name);
+                        
+                        let updatedApp = {
+                            ...newApp,
+                            isCustom: newApp.isCustom === true,
+                            hidden: newApp.hidden === true
+                        };
+                        
+                        if (existingApp) {
+                            const updatedApps = vscodeApps.map(a => a.name === newApp.name ? updatedApp : a);
+                            await config.update('vscodeAppConfigurations', updatedApps, true);
+                        } else {
+                            await config.update('vscodeAppConfigurations', [...vscodeApps, updatedApp], true);
+                        }
+                        
+                        vscode.window.showInformationMessage(`VSCode app configuration saved: ${newApp.name}`);
+                        const appAddConfig = vscode.workspace.getConfiguration('editorjumper');
+                        configPanel.webview.html = getWebviewContent(appAddConfig.get('ideConfigurations'));
+                        vscode.commands.executeCommand('editorjumper.updateStatusBar');
+                        break;
+
+                    case 'updateVscodeApp':
+                        const vscodeAppsForUpdate = config.get('vscodeAppConfigurations') || [];
+                        const updatedVscodeApps = vscodeAppsForUpdate.map(a =>
+                            a.name === message.app.name ? {
+                                ...a,
+                                ...message.app,
+                                isCustom: message.app.isCustom === true,
+                                hidden: message.app.hidden === true
+                            } : a
+                        );
+                        await config.update('vscodeAppConfigurations', updatedVscodeApps, true);
+                        const appUpdateConfig = vscode.workspace.getConfiguration('editorjumper');
+                        configPanel.webview.html = getWebviewContent(appUpdateConfig.get('ideConfigurations'));
+                        vscode.commands.executeCommand('editorjumper.updateStatusBar');
+                        break;
+
+                    case 'removeVscodeApp':
+                        const vscodeAppsForRemove = config.get('vscodeAppConfigurations') || [];
+                        const filteredApps = vscodeAppsForRemove.filter(a => a.name !== message.appName);
+                        await config.update('vscodeAppConfigurations', filteredApps, true);
+                        vscode.window.showInformationMessage('VSCode app configuration removed');
+                        const appRemoveConfig = vscode.workspace.getConfiguration('editorjumper');
+                        configPanel.webview.html = getWebviewContent(appRemoveConfig.get('ideConfigurations'));
+                        vscode.commands.executeCommand('editorjumper.updateStatusBar');
+                        break;
+
+                    case 'selectVscodeAppPath':
+                        const appPathOptions = {
+                            canSelectFiles: true,
+                            canSelectFolders: false,
+                            canSelectMany: false,
+                            openLabel: 'Select',
+                            title: 'Select VSCode App Command'
+                        };
+                        const appPathResult = await vscode.window.showOpenDialog(appPathOptions);
+                        if (appPathResult && appPathResult[0]) {
+                            configPanel.webview.postMessage({
+                                command: 'setVscodeAppPath',
+                                path: appPathResult[0].fsPath
+                            });
+                        }
+                        break;
                 }
             } catch (error) {
                 console.error('Error handling message:', error);
@@ -238,6 +321,15 @@ function getWebviewContent(ideConfigurations) {
         ? rootProjectPathInspect.workspaceValue
         : '';
     const jetBrainsRootProjectPath = (jetBrainsRootProjectPathRaw || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+    // Slot 和 VSCode App 数据
+    const slotTargets = config.get('slotTargets') || [];
+    const vscodeAppConfigurations = config.get('vscodeAppConfigurations') || [];
+    const slotShortcuts = ['Shift+Alt+O', 'Shift+Alt+I', 'Shift+Alt+U'];
+
+    // 构建所有可选编辑器列表（用于 Slot 下拉框）
+    const jetbrainsOptions = ideConfigurations.filter(ide => !ide.hidden).map(ide => ide.name);
+    const vscodeAppOptions = vscodeAppConfigurations.filter(app => !app.hidden).map(app => app.name);
 
     return `<!DOCTYPE html>
     <html>
@@ -399,6 +491,94 @@ function getWebviewContent(ideConfigurations) {
             <div class="form-actions">
                 <button onclick="saveIDE()">Save</button>
                 <button onclick="cancelEdit()">Cancel</button>
+            </div>
+        </div>
+
+        <hr style="margin: 30px 0;">
+
+        <!-- ========== Shortcut Slots ========== -->
+        <h2>Shortcut Slots</h2>
+        <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. You can assign any JetBrains IDE or VSCode-rooted editor as the target.</div>
+        <div class="ide-list">
+            ${slotTargets.map((slot, idx) => `
+                <div class="ide-item">
+                    <div class="ide-info">
+                        <div>
+                            <strong>Slot ${slot.slot}</strong>
+                            <span style="color: var(--vscode-descriptionForeground); margin-left: 8px;">${slotShortcuts[idx] || ''}</span>
+                        </div>
+                    </div>
+                    <div class="ide-controls" style="gap: 6px;">
+                        <select id="slotType-${idx}" onchange="onSlotTypeChange(${idx})" style="padding: 4px;">
+                            <option value="jetbrains" ${slot.type === 'jetbrains' ? 'selected' : ''}>JetBrains</option>
+                            <option value="vscode-app" ${slot.type === 'vscode-app' ? 'selected' : ''}>VSCode App</option>
+                        </select>
+                        <select id="slotTarget-${idx}" style="padding: 4px; min-width: 140px;">
+                            ${slot.type === 'jetbrains'
+                                ? jetbrainsOptions.map(name => `<option value="${name}" ${slot.target === name ? 'selected' : ''}>${name}</option>`).join('')
+                                : vscodeAppOptions.map(name => `<option value="${name}" ${slot.target === name ? 'selected' : ''}>${name}</option>`).join('')
+                            }
+                            ${!slot.target ? '<option value="" selected>(not set)</option>' : ''}
+                        </select>
+                        <button onclick="saveSlot(${idx})">Save</button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <hr style="margin: 30px 0;">
+
+        <!-- ========== VSCode-Rooted Editors ========== -->
+        <h2>VSCode-Rooted Editors</h2>
+        <div class="action-buttons">
+            <button onclick="showAddVscodeAppForm()">Add New Editor</button>
+        </div>
+        <div class="ide-list">
+            ${vscodeAppConfigurations.map(app => `
+                <div class="ide-item ${app.hidden ? 'hidden-ide' : ''}">
+                    <div class="ide-info">
+                        <div>
+                            <strong>${app.name}</strong>
+                            ${app.isCustom ? ' (Custom)' : ''}
+                        </div>
+                    </div>
+                    <div class="ide-controls">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="vscapp-hidden-${app.name}"
+                                ${app.hidden ? 'checked' : ''}
+                                onchange="toggleVscodeAppHidden('${app.name}')">
+                            <label for="vscapp-hidden-${app.name}">Hidden</label>
+                        </div>
+                        <button onclick="editVscodeApp('${app.name}')">Edit</button>
+                        ${app.isCustom ? `<button onclick="removeVscodeApp('${app.name}')">Remove</button>` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+
+        <div id="vscodeAppForm" style="display: none; margin-top: 20px;">
+            <h3 id="vscodeAppFormTitle">Add New Editor</h3>
+            <div class="form-group">
+                <label for="vscodeAppName">Editor Name:</label>
+                <input type="text" id="vscodeAppName" placeholder="e.g. MyEditor">
+            </div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="vscodeAppHidden">
+                <label for="vscodeAppHidden">Hidden</label>
+            </div>
+            <div class="form-group command-group">
+                <div style="flex: 1;">
+                    <label for="vscodeAppCommand">Command Path:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="vscodeAppCommand" style="flex: 1;" placeholder="e.g. myeditor or /path/to/myeditor">
+                        <button onclick="selectVscodeAppPath()">Browse...</button>
+                    </div>
+                    <div class="note">If left empty, the default command name will be used.</div>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button onclick="saveVscodeApp()">Save</button>
+                <button onclick="cancelVscodeAppEdit()">Cancel</button>
             </div>
         </div>
 
@@ -645,6 +825,128 @@ function getWebviewContent(ideConfigurations) {
                 vscode.postMessage({ command: 'saveRootProjectPath', path: path });
             }
 
+            // ========== Slot 相关函数 ==========
+            const jetbrainsOptions = ${JSON.stringify(jetbrainsOptions)};
+            const vscodeAppOptions = ${JSON.stringify(vscodeAppOptions)};
+            const slotTargetsData = ${JSON.stringify(slotTargets)};
+
+            function onSlotTypeChange(idx) {
+                const typeSelect = document.getElementById('slotType-' + idx);
+                const targetSelect = document.getElementById('slotTarget-' + idx);
+                if (!typeSelect || !targetSelect) return;
+
+                const type = typeSelect.value;
+                const options = type === 'jetbrains' ? jetbrainsOptions : vscodeAppOptions;
+                targetSelect.innerHTML = options.map(name => '<option value="' + name + '">' + name + '</option>').join('');
+            }
+
+            function saveSlot(idx) {
+                const typeSelect = document.getElementById('slotType-' + idx);
+                const targetSelect = document.getElementById('slotTarget-' + idx);
+                if (!typeSelect || !targetSelect) return;
+
+                vscode.postMessage({
+                    command: 'updateSlot',
+                    slotIndex: idx,
+                    slotType: typeSelect.value,
+                    slotTarget: targetSelect.value
+                });
+            }
+
+            // ========== VSCode App 相关函数 ==========
+            const vscodeAppConfigurations = ${JSON.stringify(vscodeAppConfigurations)};
+            let currentEditingVscodeApp = '';
+
+            function showAddVscodeAppForm() {
+                document.getElementById('vscodeAppFormTitle').textContent = 'Add New Editor';
+                document.getElementById('vscodeAppForm').style.display = 'block';
+                document.getElementById('vscodeAppName').value = '';
+                document.getElementById('vscodeAppName').disabled = false;
+                document.getElementById('vscodeAppHidden').checked = false;
+                document.getElementById('vscodeAppCommand').value = '';
+                currentEditingVscodeApp = '';
+            }
+
+            function editVscodeApp(name) {
+                const app = vscodeAppConfigurations.find(a => a.name === name);
+                if (!app) return;
+
+                currentEditingVscodeApp = name;
+                document.getElementById('vscodeAppFormTitle').textContent = 'Edit Editor';
+                document.getElementById('vscodeAppForm').style.display = 'block';
+                document.getElementById('vscodeAppName').value = app.name;
+                document.getElementById('vscodeAppName').disabled = !app.isCustom;
+                document.getElementById('vscodeAppHidden').checked = app.hidden === true;
+                document.getElementById('vscodeAppCommand').value = app.commandPath || '';
+            }
+
+            function saveVscodeApp() {
+                if (!vscode) {
+                    alert('VS Code API not initialized. Please reload the window.');
+                    return;
+                }
+
+                const name = document.getElementById('vscodeAppName').value;
+                const isHidden = document.getElementById('vscodeAppHidden').checked === true;
+                const commandPath = document.getElementById('vscodeAppCommand').value;
+
+                if (!name || !name.trim()) {
+                    alert('Please provide an editor name');
+                    return;
+                }
+
+                const isCustom = currentEditingVscodeApp
+                    ? (vscodeAppConfigurations.find(a => a.name === currentEditingVscodeApp) || {}).isCustom === true
+                    : true;
+
+                vscode.postMessage({
+                    command: 'addVscodeApp',
+                    app: {
+                        name: name,
+                        isCustom: isCustom,
+                        hidden: isHidden,
+                        commandPath: commandPath || null
+                    }
+                });
+
+                document.getElementById('vscodeAppForm').style.display = 'none';
+            }
+
+            function cancelVscodeAppEdit() {
+                document.getElementById('vscodeAppForm').style.display = 'none';
+                currentEditingVscodeApp = '';
+            }
+
+            function toggleVscodeAppHidden(name) {
+                const app = vscodeAppConfigurations.find(a => a.name === name);
+                if (!app) return;
+
+                const isHidden = document.getElementById('vscapp-hidden-' + name).checked === true;
+
+                vscode.postMessage({
+                    command: 'updateVscodeApp',
+                    app: {
+                        ...app,
+                        hidden: isHidden
+                    }
+                });
+            }
+
+            function removeVscodeApp(name) {
+                vscode.postMessage({
+                    command: 'removeVscodeApp',
+                    appName: name
+                });
+            }
+
+            function selectVscodeAppPath() {
+                if (!vscode) {
+                    alert('VS Code API not initialized. Please reload the window.');
+                    return;
+                }
+                vscode.postMessage({ command: 'selectVscodeAppPath' });
+            }
+
             window.addEventListener('message', event => {
                 const message = event.data;
                 switch (message.command) {
@@ -665,12 +967,16 @@ function getWebviewContent(ideConfigurations) {
                             }, 500);
                         }
                         break;
+                    case 'setVscodeAppPath':
+                        const appCmdEl = document.getElementById('vscodeAppCommand');
+                        if (appCmdEl) appCmdEl.value = message.path;
+                        break;
                 }
             });
         </script>
     </body>
-    </html>`;
-}
+    </html>
+};
 
 /**
  * 高亮显示指定IDE
