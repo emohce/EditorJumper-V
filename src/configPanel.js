@@ -325,7 +325,7 @@ function getWebviewContent(ideConfigurations) {
     // Slot 和 VSCode App 数据
     const slotTargets = config.get('slotTargets') || [];
     const vscodeAppConfigurations = config.get('vscodeAppConfigurations') || [];
-    const slotShortcuts = ['Shift+Alt+O', 'Shift+Alt+I', 'Shift+Alt+U'];
+    const slotShortcuts = ['', 'Shift+Alt+I', 'Shift+Alt+U'];
 
     // 构建所有可选编辑器列表（用于 Slot 下拉框）
     const jetbrainsOptions = ideConfigurations.filter(ide => !ide.hidden).map(ide => ide.name);
@@ -413,6 +413,10 @@ function getWebviewContent(ideConfigurations) {
             .highlight {
                 background-color: var(--vscode-editor-selectionBackground);
                 border-left: 3px solid var(--vscode-terminal-ansiGreen);
+            }
+            .slot-shortcut {
+                color: var(--vscode-descriptionForeground);
+                margin-left: 8px;
             }
         </style>
     </head>
@@ -505,7 +509,7 @@ function getWebviewContent(ideConfigurations) {
                     <div class="ide-info">
                         <div>
                             <strong>Slot ${slot.slot}</strong>
-                            <span style="color: var(--vscode-descriptionForeground); margin-left: 8px;">${slotShortcuts[idx] || ''}</span>
+                            <span class="slot-shortcut">${slotShortcuts[idx] || ''}</span>
                         </div>
                     </div>
                     <div class="ide-controls" style="gap: 6px;">
@@ -976,7 +980,8 @@ function getWebviewContent(ideConfigurations) {
         </script>
     </body>
     </html>
-};
+    `;
+}
 
 /**
  * 高亮显示指定IDE
