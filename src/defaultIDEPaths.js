@@ -165,6 +165,39 @@ const vscodeAppConfigs = {
     }
 };
 
+const vscodeAppNameAliases = {
+    'Code': 'Visual Studio Code',
+    'VS Code': 'Visual Studio Code',
+    'Visual Studio Code': 'Visual Studio Code',
+    'Visual Studio Code - Insiders': 'Visual Studio Code',
+    'Cursor': 'Cursor',
+    'Cursor Nightly': 'Cursor',
+    'Cursor - Insiders': 'Cursor',
+    'Windsurf': 'Windsurf',
+    'Codeium Windsurf': 'Windsurf',
+    'Windsurf Next': 'Windsurf',
+    'Trae': 'Trae',
+    'Void': 'Void',
+    'Kiro': 'Kiro',
+    'Qoder': 'Qoder',
+    'CatPawAI': 'CatPawAI',
+    'Antigravity': 'Antigravity'
+};
+
+function normalizeVscodeAppName(appName) {
+    if (!appName || typeof appName !== 'string') {
+        return '';
+    }
+
+    const trimmed = appName.trim();
+    if (vscodeAppNameAliases[trimmed]) {
+        return vscodeAppNameAliases[trimmed];
+    }
+
+    const builtinName = Object.keys(vscodeAppConfigs).find(name => trimmed === name || trimmed.includes(name));
+    return builtinName || trimmed;
+}
+
 // Slot 2 智能对等编辑器映射
 const smartPeerMap = {
     'Cursor': 'Windsurf',
@@ -183,4 +216,6 @@ module.exports = defaultIDEPaths;
 module.exports.ideConfigs = ideConfigs;
 module.exports.ideAppNames = ideAppNames;
 module.exports.vscodeAppConfigs = vscodeAppConfigs;
+module.exports.vscodeAppNameAliases = vscodeAppNameAliases;
+module.exports.normalizeVscodeAppName = normalizeVscodeAppName;
 module.exports.smartPeerMap = smartPeerMap;

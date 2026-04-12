@@ -5,10 +5,15 @@ const os = require('os');
 const fs = require('fs');
 const defaultIDEPaths = require('./defaultIDEPaths');
 const { ideConfigs, vscodeAppConfigs, smartPeerMap } = require('./defaultIDEPaths');
-const configPanel = require('./configPanel');
+const { normalizeVscodeAppName } = require('./defaultIDEPaths');
+let configPanel = require('./configPanel');
 
 let statusBarItem;
 let slotStatusBarItem;
+
+function getCurrentVscodeAppName() {
+	return normalizeVscodeAppName(vscode.env.appName);
+}
 
 // 添加Xcode的默认路径
 if (!defaultIDEPaths['Xcode']) {
@@ -110,7 +115,7 @@ async function activate(context) {
 	}
 
 	// 智能初始化 Slot 2 目标：根据当前编辑器自动设置对等编辑器
-	const currentAppName = vscode.env.appName;
+	const currentAppName = getCurrentVscodeAppName();
 	const slotTargets = config.get('slotTargets');
 	if (slotTargets && slotTargets.length >= 2 && !slotTargets[1].target) {
 		const peer = smartPeerMap[currentAppName] || 'Cursor';
@@ -535,6 +540,34 @@ async function activate(context) {
 		return null;
 	}
 
+	function getBuiltinVscodeAppConfig(targetAppName) {
+		const normalizedName = normalizeVscodeAppName(targetAppName);
+		return vscodeAppConfigs[targetAppName] || vscodeAppConfigs[normalizedName] || null;
+	}
+
+	function canUseMacOpenFallback(commandPath, commandPathIsFilePath, builtinConf) {
+		if (process.platform !== 'darwin' || !builtinConf || !builtinConf.macAppName) {
+			return false;
+		}
+
+		if (commandPathIsFilePath) {
+			return !fs.existsSync(commandPath);
+		}
+
+		const resolvedPath = findCommandPath(commandPath);
+		return resolvedPath === commandPath;
+	}
+
+	function buildMacOpenCommandForVscodeApp(builtinConf, projectPath, filePath, lineNumber, columnNumber) {
+		const appName = builtinConf.macAppName;
+		if (filePath) {
+			const gotoArg = `${filePath}:${lineNumber}:${columnNumber}`;
+			return `open -a "${appName}" --args --goto "${gotoArg}"`;
+		}
+
+		return `open -a "${appName}" "${projectPath}"`;
+	}
+
 	/**
 	 * 在 VSCode-rooted app 中打开文件
 	 */
@@ -546,8 +579,11 @@ async function activate(context) {
 
 		const config = vscode.workspace.getConfiguration('editorjumper');
 		const vscodeAppConfs = config.get('vscodeAppConfigurations');
-		const appConf = vscodeAppConfs ? vscodeAppConfs.find(a => a.name === targetAppName) : null;
-		const builtinConf = vscodeAppConfigs[targetAppName];
+		const normalizedTargetAppName = normalizeVscodeAppName(targetAppName);
+		const appConf = vscodeAppConfs
+			? vscodeAppConfs.find(a => normalizeVscodeAppName(a.name) === normalizedTargetAppName)
+			: null;
+		const builtinConf = getBuiltinVscodeAppConfig(targetAppName);
 
 		const platform = process.platform;
 		let commandPath = '';
@@ -561,7 +597,7 @@ async function activate(context) {
 
 		if (!commandPath) {
 			const result = await vscode.window.showErrorMessage(
-				`Command path for ${targetAppName} is not configured. Would you like to configure it now?`,
+				`Command path for ${normalizedTargetAppName || targetAppName} is not configured. Would you like to configure it now?`,
 				'Configure', 'Cancel'
 			);
 			if (result === 'Configure') {
@@ -599,15 +635,18 @@ async function activate(context) {
 
 		// 写入 jumpBackSource 信号
 		try {
-			await config.update('jumpBackSource', currentAppName, vscode.ConfigurationTarget.Workspace);
+			await config.update('jumpBackSource', getCurrentVscodeAppName(), vscode.ConfigurationTarget.Workspace);
 		} catch (e) {
 			console.warn('Could not write jumpBackSource:', e.message);
 		}
 
 		// 构建命令
 		let fullCommand = '';
+		const useMacOpenFallback = canUseMacOpenFallback(commandPath, commandPathIsFilePath, builtinConf);
 		let fileArg = '';
-		if (filePath) {
+		if (useMacOpenFallback) {
+			fullCommand = buildMacOpenCommandForVscodeApp(builtinConf, projectPath, filePath, lineNumber, columnNumber);
+		} else if (filePath) {
 			// When using --goto, VSCode-based editors will auto-detect the workspace from the file path
 			// Don't pass projectPath separately as it can interfere with workspace detection
 			fileArg = `--goto "${filePath}:${lineNumber}:${columnNumber}"`;
@@ -628,7 +667,7 @@ async function activate(context) {
 		console.log('VSCode app command:', fullCommand);
 
 		exec(fullCommand, { shell: true }, (error, stdout, stderr) => {
-			handleCommandResult(error, stdout, stderr, `Failed to launch ${targetAppName}`);
+			handleCommandResult(error, stdout, stderr, `Failed to launch ${normalizedTargetAppName || targetAppName}`);
 		});
 	}
 
@@ -700,7 +739,7 @@ async function activate(context) {
 		const config = vscode.workspace.getConfiguration('editorjumper');
 		const jumpBackSourceInspect = config.inspect('jumpBackSource');
 		const jumpBackSource = (jumpBackSourceInspect && typeof jumpBackSourceInspect.workspaceValue === 'string')
-			? jumpBackSourceInspect.workspaceValue
+			? normalizeVscodeAppName(jumpBackSourceInspect.workspaceValue)
 			: '';
 
 		if (!jumpBackSource) {
@@ -709,7 +748,7 @@ async function activate(context) {
 		}
 
 		// 判断 source 类型
-		const isVscodeApp = !!vscodeAppConfigs[jumpBackSource];
+		const isVscodeApp = !!getBuiltinVscodeAppConfig(jumpBackSource);
 		const sourceType = isVscodeApp ? 'vscode-app' : 'jetbrains';
 
 		await openInEditorInternal(undefined, sourceType, jumpBackSource);
@@ -760,7 +799,7 @@ async function activate(context) {
 		} else {
 			const vscodeConfs = config.get('vscodeAppConfigurations') || [];
 			editorItems = vscodeConfs
-				.filter(app => !app.hidden && app.name !== currentAppName)
+				.filter(app => !app.hidden && normalizeVscodeAppName(app.name) !== currentAppName)
 				.map(app => ({ label: app.name, name: app.name }));
 		}
 
