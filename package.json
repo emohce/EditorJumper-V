@@ -223,7 +223,7 @@
             { "slot": 2, "type": "vscode-app", "target": "" },
             { "slot": 3, "type": "vscode-app", "target": "" }
           ],
-          "description": "Shortcut slot targets. Each slot has a type (jetbrains or vscode-app) and a target editor name. Slot 1 defaults to selected JetBrains IDE, Slot 2 auto-detects peer editor.",
+          "description": "Shortcut slot targets (project-specific). Each slot has a type (jetbrains or vscode-app) and a target editor name. Slot 1 defaults to selected JetBrains IDE, Slot 2 auto-detects peer editor. Stored per workspace/project.",
           "items": {
             "type": "object",
             "required": ["slot", "type", "target"],
@@ -287,6 +287,14 @@
           "type": "string",
           "default": "",
           "description": "Internal: source editor name for jump-back. Automatically set when jumping to another editor."
+        },
+        "editorjumper.collapsedSections": {
+          "type": "object",
+          "default": {
+            "jetbrains-section": true,
+            "vscode-section": true
+          },
+          "description": "Collapse state of configuration sections. Stored across VSCode-based editors."
         }
       }
     }

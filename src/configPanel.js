@@ -29,7 +29,8 @@ function createConfigurationPanel(context) {
 
     // 强制重新加载配置
     const config = vscode.workspace.getConfiguration('editorjumper');
-    configPanel.webview.html = getWebviewContent(config.get('ideConfigurations'));
+    const collapsedSections = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+    configPanel.webview.html = getWebviewContent(config.get('ideConfigurations'), collapsedSections);
 
     configPanel.webview.onDidReceiveMessage(
         async message => {
@@ -81,7 +82,8 @@ function createConfigurationPanel(context) {
                         
                         // 重新获取最新配置并更新WebView
                         const addUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(addUpdatedConfig.get('ideConfigurations'));
+                        const collapsedSections = addUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(addUpdatedConfig.get('ideConfigurations'), collapsedSections);
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -108,7 +110,8 @@ function createConfigurationPanel(context) {
                         
                         // 重新获取最新配置并更新WebView
                         const updateUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(updateUpdatedConfig.get('ideConfigurations'));
+                        const collapsedSections = updateUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(updateUpdatedConfig.get('ideConfigurations'), collapsedSections);
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -129,7 +132,8 @@ function createConfigurationPanel(context) {
                         
                         // 重新获取最新配置并更新WebView
                         const updatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(updatedConfig.get('ideConfigurations'));
+                        const collapsedSections = updatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(updatedConfig.get('ideConfigurations'), collapsedSections);
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -139,7 +143,8 @@ function createConfigurationPanel(context) {
                         
                         // 重新获取最新配置并更新WebView
                         const selectUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(selectUpdatedConfig.get('ideConfigurations'));
+                        const collapsedSections = selectUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(selectUpdatedConfig.get('ideConfigurations'), collapsedSections);
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -181,7 +186,8 @@ function createConfigurationPanel(context) {
                         if (folderResult && folderResult[0]) {
                             await config.update('jetBrainsRootProjectPath', folderResult[0].fsPath, vscode.ConfigurationTarget.Workspace);
                             const rootUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                            configPanel.webview.html = getWebviewContent(rootUpdatedConfig.get('ideConfigurations'));
+                            const collapsedSections = rootUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                            configPanel.webview.html = getWebviewContent(rootUpdatedConfig.get('ideConfigurations'), collapsedSections);
                         }
                         break;
                     case 'saveRootProjectPath':
@@ -189,7 +195,8 @@ function createConfigurationPanel(context) {
                         await config.update('jetBrainsRootProjectPath', pathToSave, vscode.ConfigurationTarget.Workspace);
                         vscode.window.showInformationMessage('JetBrains root project path saved.');
                         const saveUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(saveUpdatedConfig.get('ideConfigurations'));
+                        const collapsedSections = saveUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(saveUpdatedConfig.get('ideConfigurations'), collapsedSections);
                         break;
                     case 'updateSlot':
                         const slotTargets = config.get('slotTargets') || [];
@@ -200,11 +207,12 @@ function createConfigurationPanel(context) {
                                 type: message.slotType,
                                 target: message.slotTarget
                             };
-                            await config.update('slotTargets', slotTargets, true);
-                            vscode.window.showInformationMessage(`Slot ${slotIdx + 1} → ${message.slotTarget} (${message.slotType})`);
+                            await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
+                            vscode.window.showInformationMessage(`Slot ${slotIdx + 1} → ${message.slotTarget} (${message.slotType}) - saved for this project`);
                         }
                         const slotUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(slotUpdatedConfig.get('ideConfigurations'));
+                        const collapsedSections = slotUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(slotUpdatedConfig.get('ideConfigurations'), collapsedSections);
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
@@ -228,7 +236,8 @@ function createConfigurationPanel(context) {
                         
                         vscode.window.showInformationMessage(`VSCode app configuration saved: ${newApp.name}`);
                         const appAddConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(appAddConfig.get('ideConfigurations'));
+                        const collapsedSections = appAddConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(appAddConfig.get('ideConfigurations'), collapsedSections);
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
@@ -244,7 +253,8 @@ function createConfigurationPanel(context) {
                         );
                         await config.update('vscodeAppConfigurations', updatedVscodeApps, true);
                         const appUpdateConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(appUpdateConfig.get('ideConfigurations'));
+                        const collapsedSections = appUpdateConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(appUpdateConfig.get('ideConfigurations'), collapsedSections);
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
@@ -254,7 +264,8 @@ function createConfigurationPanel(context) {
                         await config.update('vscodeAppConfigurations', filteredApps, true);
                         vscode.window.showInformationMessage('VSCode app configuration removed');
                         const appRemoveConfig = vscode.workspace.getConfiguration('editorjumper');
-                        configPanel.webview.html = getWebviewContent(appRemoveConfig.get('ideConfigurations'));
+                        const collapsedSections = appRemoveConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        configPanel.webview.html = getWebviewContent(appRemoveConfig.get('ideConfigurations'), collapsedSections);
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
@@ -273,6 +284,12 @@ function createConfigurationPanel(context) {
                                 path: appPathResult[0].fsPath
                             });
                         }
+                        break;
+
+                    case 'toggleSection':
+                        const currentCollapsed = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+                        currentCollapsed[message.sectionId] = message.collapsed;
+                        await config.update('collapsedSections', currentCollapsed, true);
                         break;
                 }
             } catch (error) {
@@ -298,9 +315,10 @@ function createConfigurationPanel(context) {
 /**
  * 获取WebView内容
  * @param {Array} ideConfigurations IDE配置列表
+ * @param {Object} collapsedSections 折叠状态对象
  * @returns {string} WebView HTML内容
  */
-function getWebviewContent(ideConfigurations) {
+function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-section': true, 'vscode-section': true }) {
     const ideTypes = ["IDEA", "WebStorm", "PyCharm", "GoLand", "CLion", "PhpStorm", "RubyMine", "Rider", "Android Studio"];
     const config = vscode.workspace.getConfiguration('editorjumper');
     const selectedIDE = config.get('selectedIDE');
@@ -325,7 +343,7 @@ function getWebviewContent(ideConfigurations) {
     // Slot 和 VSCode App 数据
     const slotTargets = config.get('slotTargets') || [];
     const vscodeAppConfigurations = config.get('vscodeAppConfigurations') || [];
-    const slotShortcuts = ['', 'Shift+Alt+I', 'Shift+Alt+U'];
+    const slotShortcuts = ['Shift+Alt+O / Shift+Alt+P', 'Shift+Alt+I', 'Shift+Alt+U'];
 
     // 构建所有可选编辑器列表（用于 Slot 下拉框）
     const jetbrainsOptions = ideConfigurations.filter(ide => !ide.hidden).map(ide => ide.name);
@@ -335,14 +353,36 @@ function getWebviewContent(ideConfigurations) {
     <html>
     <head>
         <style>
-            body { padding: 20px; }
-            .ide-list { margin: 20px 0; }
+            body { padding: 15px; }
+            h2 { margin: 15px 0 10px 0; }
+            h3 { margin: 10px 0; }
+            .ide-list { margin: 8px 0; }
+            .collapsible-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                cursor: pointer;
+                padding: 6px 10px;
+                background: var(--vscode-editor-background);
+                border: 1px solid var(--vscode-input-border);
+                border-radius: 4px;
+                margin: 6px 0;
+            }
+            .collapsible-header:hover {
+                background: var(--vscode-list-hoverBackground);
+            }
+            .collapsible-content {
+                display: block;
+            }
+            .collapsible-content.collapsed {
+                display: none;
+            }
             .ide-item {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 10px;
-                margin: 5px 0;
+                padding: 4px 10px;
+                margin: 1px 0;
                 border: 1px solid var(--vscode-input-border);
                 border-radius: 4px;
             }
@@ -422,46 +462,89 @@ function getWebviewContent(ideConfigurations) {
     </head>
     <body>
         <h2>Ez-EditorJumper Configurations</h2>
-        <div class="form-group command-group" style="margin-bottom: 16px;">
-            <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Directory containing .idea (multi-module / multi-root)">
-                <button onclick="selectPathForRootProject()">浏览目录</button>
-                <button onclick="saveRootProjectPath()">Save</button>
-            </div>
-            <div class="note">Leave empty to use workspace folder as project path.</div>
-        </div>
-        <div class="action-buttons">
-            <button onclick="showAddForm()">Add New IDE</button>
-        </div>
+
+        <!-- ========== Shortcut Slots (Primary Section) ========== -->
+        <h2>Shortcut Slots</h2>
+        <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. You can assign any JetBrains IDE or VSCode-rooted editor as the target.</div>
         <div class="ide-list">
-            ${ideConfigurations.map(ide => `
-                <div id="ide-${ide.name}" class="ide-item ${ide.hidden ? 'hidden-ide' : ''}">
+            ${slotTargets.map((slot, idx) => `
+                <div class="ide-item">
                     <div class="ide-info">
-                        ${ide.name === selectedIDE ? '<span class="selected-indicator">✓</span>' : ''}
                         <div>
-                            <strong>${ide.name}</strong>
-                            ${ide.isCustom ? ' (Custom)' : ''}
+                            <strong>Slot ${slot.slot}</strong>
+                            <span class="slot-shortcut">${slotShortcuts[idx] || ''}</span>
                         </div>
                     </div>
-                    <div class="ide-controls">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="hidden-${ide.name}" 
-                                ${ide.hidden ? 'checked' : ''} 
-                                onchange="toggleHidden('${ide.name}')">
-                            <label for="hidden-${ide.name}">Hidden</label>
-                        </div>
-                        <button onclick="editIDE('${ide.name}')">Edit</button>
-                        ${ide.isCustom ? `
-                            <button onclick="removeIDE('${ide.name}')" 
-                                ${ide.name === selectedIDE ? 'disabled title="Cannot remove currently selected IDE"' : ''}>
-                                Remove
-                            </button>
-                        ` : ''}
-                        <button onclick="selectIDE('${ide.name}')">${ide.name === selectedIDE ? 'Selected' : 'Select'}</button>
+                    <div class="ide-controls" style="gap: 6px;">
+                        <select id="slotType-${idx}" onchange="onSlotTypeChange(${idx})" style="padding: 4px;">
+                            <option value="jetbrains" ${slot.type === 'jetbrains' ? 'selected' : ''}>JetBrains</option>
+                            <option value="vscode-app" ${slot.type === 'vscode-app' ? 'selected' : ''}>VSCode App</option>
+                        </select>
+                        <select id="slotTarget-${idx}" style="padding: 4px; min-width: 140px;">
+                            ${slot.type === 'jetbrains'
+                                ? jetbrainsOptions.map(name => `<option value="${name}" ${slot.target === name ? 'selected' : ''}>${name}</option>`).join('')
+                                : vscodeAppOptions.map(name => `<option value="${name}" ${slot.target === name ? 'selected' : ''}>${name}</option>`).join('')
+                            }
+                            ${!slot.target ? '<option value="" selected>(not set)</option>' : ''}
+                        </select>
+                        <button onclick="saveSlot(${idx})">Save</button>
                     </div>
                 </div>
             `).join('')}
+        </div>
+
+        <hr style="margin: 30px 0;">
+
+        <!-- ========== JetBrains IDE Configuration (Collapsible) ========== -->
+        <div class="collapsible-header" onclick="toggleCollapsible('jetbrains-section')">
+            <div>
+                <strong>JetBrains IDE Configuration</strong>
+                <span class="slot-shortcut">Click to expand/collapse</span>
+            </div>
+            <span id="jetbrains-section-toggle">${collapsedSections['jetbrains-section'] ? '▶' : '▼'}</span>
+        </div>
+        <div id="jetbrains-section" class="collapsible-content ${collapsedSections['jetbrains-section'] ? 'collapsed' : ''}">
+            <div class="form-group command-group" style="margin-bottom: 16px;">
+                <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Directory containing .idea (multi-module / multi-root)">
+                    <button onclick="selectPathForRootProject()">浏览目录</button>
+                    <button onclick="saveRootProjectPath()">Save</button>
+                </div>
+                <div class="note">Leave empty to use workspace folder as project path.</div>
+            </div>
+            <div class="action-buttons">
+                <button onclick="showAddForm()">Add New IDE</button>
+            </div>
+            <div class="ide-list">
+                ${ideConfigurations.map(ide => `
+                    <div id="ide-${ide.name}" class="ide-item ${ide.hidden ? 'hidden-ide' : ''}">
+                        <div class="ide-info">
+                            ${ide.name === selectedIDE ? '<span class="selected-indicator">✓</span>' : ''}
+                            <div>
+                                <strong>${ide.name}</strong>
+                                ${ide.isCustom ? ' (Custom)' : ''}
+                            </div>
+                        </div>
+                        <div class="ide-controls">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="hidden-${ide.name}"
+                                    ${ide.hidden ? 'checked' : ''}
+                                    onchange="toggleHidden('${ide.name}')">
+                                <label for="hidden-${ide.name}">Hidden</label>
+                            </div>
+                            <button onclick="editIDE('${ide.name}')">Edit</button>
+                            ${ide.isCustom ? `
+                                <button onclick="removeIDE('${ide.name}')"
+                                    ${ide.name === selectedIDE ? 'disabled title="Cannot remove currently selected IDE"' : ''}>
+                                    Remove
+                                </button>
+                            ` : ''}
+                            <button onclick="selectIDE('${ide.name}')">${ide.name === selectedIDE ? 'Selected' : 'Select'}</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
         </div>
 
         <div id="ideForm" style="display: none; margin-top: 20px;">
@@ -500,64 +583,40 @@ function getWebviewContent(ideConfigurations) {
 
         <hr style="margin: 30px 0;">
 
-        <!-- ========== Shortcut Slots ========== -->
-        <h2>Shortcut Slots</h2>
-        <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. You can assign any JetBrains IDE or VSCode-rooted editor as the target.</div>
-        <div class="ide-list">
-            ${slotTargets.map((slot, idx) => `
-                <div class="ide-item">
-                    <div class="ide-info">
-                        <div>
-                            <strong>Slot ${slot.slot}</strong>
-                            <span class="slot-shortcut">${slotShortcuts[idx] || ''}</span>
-                        </div>
-                    </div>
-                    <div class="ide-controls" style="gap: 6px;">
-                        <select id="slotType-${idx}" onchange="onSlotTypeChange(${idx})" style="padding: 4px;">
-                            <option value="jetbrains" ${slot.type === 'jetbrains' ? 'selected' : ''}>JetBrains</option>
-                            <option value="vscode-app" ${slot.type === 'vscode-app' ? 'selected' : ''}>VSCode App</option>
-                        </select>
-                        <select id="slotTarget-${idx}" style="padding: 4px; min-width: 140px;">
-                            ${slot.type === 'jetbrains'
-                                ? jetbrainsOptions.map(name => `<option value="${name}" ${slot.target === name ? 'selected' : ''}>${name}</option>`).join('')
-                                : vscodeAppOptions.map(name => `<option value="${name}" ${slot.target === name ? 'selected' : ''}>${name}</option>`).join('')
-                            }
-                            ${!slot.target ? '<option value="" selected>(not set)</option>' : ''}
-                        </select>
-                        <button onclick="saveSlot(${idx})">Save</button>
-                    </div>
-                </div>
-            `).join('')}
+        <!-- ========== VSCode-Rooted Editors (Collapsible) ========== -->
+        <div class="collapsible-header" onclick="toggleCollapsible('vscode-section')">
+            <div>
+                <strong>VSCode-Rooted Editors</strong>
+                <span class="slot-shortcut">Click to expand/collapse</span>
+            </div>
+            <span id="vscode-section-toggle">${collapsedSections['vscode-section'] ? '▶' : '▼'}</span>
         </div>
-
-        <hr style="margin: 30px 0;">
-
-        <!-- ========== VSCode-Rooted Editors ========== -->
-        <h2>VSCode-Rooted Editors</h2>
-        <div class="action-buttons">
-            <button onclick="showAddVscodeAppForm()">Add New Editor</button>
-        </div>
-        <div class="ide-list">
-            ${vscodeAppConfigurations.map(app => `
-                <div class="ide-item ${app.hidden ? 'hidden-ide' : ''}">
-                    <div class="ide-info">
-                        <div>
-                            <strong>${app.name}</strong>
-                            ${app.isCustom ? ' (Custom)' : ''}
+        <div id="vscode-section" class="collapsible-content ${collapsedSections['vscode-section'] ? 'collapsed' : ''}">
+            <div class="action-buttons">
+                <button onclick="showAddVscodeAppForm()">Add New Editor</button>
+            </div>
+            <div class="ide-list">
+                ${vscodeAppConfigurations.map(app => `
+                    <div class="ide-item ${app.hidden ? 'hidden-ide' : ''}">
+                        <div class="ide-info">
+                            <div>
+                                <strong>${app.name}</strong>
+                                ${app.isCustom ? ' (Custom)' : ''}
+                            </div>
+                        </div>
+                        <div class="ide-controls">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="vscapp-hidden-${app.name}"
+                                    ${app.hidden ? 'checked' : ''}
+                                    onchange="toggleVscodeAppHidden('${app.name}')">
+                                <label for="vscapp-hidden-${app.name}">Hidden</label>
+                            </div>
+                            <button onclick="editVscodeApp('${app.name}')">Edit</button>
+                            ${app.isCustom ? `<button onclick="removeVscodeApp('${app.name}')">Remove</button>` : ''}
                         </div>
                     </div>
-                    <div class="ide-controls">
-                        <div class="checkbox-group">
-                            <input type="checkbox" id="vscapp-hidden-${app.name}"
-                                ${app.hidden ? 'checked' : ''}
-                                onchange="toggleVscodeAppHidden('${app.name}')">
-                            <label for="vscapp-hidden-${app.name}">Hidden</label>
-                        </div>
-                        <button onclick="editVscodeApp('${app.name}')">Edit</button>
-                        ${app.isCustom ? `<button onclick="removeVscodeApp('${app.name}')">Remove</button>` : ''}
-                    </div>
-                </div>
-            `).join('')}
+                `).join('')}
+            </div>
         </div>
 
         <div id="vscodeAppForm" style="display: none; margin-top: 20px;">
@@ -601,6 +660,28 @@ function getWebviewContent(ideConfigurations) {
             const isMac = ${isMac};
             // 跟踪当前正在编辑的IDE名称
             let currentEditingIDE = '';
+
+            function toggleCollapsible(sectionId) {
+                const section = document.getElementById(sectionId);
+                const toggle = document.getElementById(sectionId + '-toggle');
+                if (section.classList.contains('collapsed')) {
+                    section.classList.remove('collapsed');
+                    toggle.textContent = '▼';
+                    vscode.postMessage({
+                        command: 'toggleSection',
+                        sectionId: sectionId,
+                        collapsed: false
+                    });
+                } else {
+                    section.classList.add('collapsed');
+                    toggle.textContent = '▶';
+                    vscode.postMessage({
+                        command: 'toggleSection',
+                        sectionId: sectionId,
+                        collapsed: true
+                    });
+                }
+            }
 
             function showAddForm() {
                 document.getElementById('formTitle').textContent = 'Add New IDE';

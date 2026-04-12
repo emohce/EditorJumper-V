@@ -5,7 +5,7 @@ const os = require('os');
 const fs = require('fs');
 const defaultIDEPaths = require('./defaultIDEPaths');
 const { ideConfigs, vscodeAppConfigs, smartPeerMap } = require('./defaultIDEPaths');
-let configPanel;
+const configPanel = require('./configPanel');
 
 let statusBarItem;
 let slotStatusBarItem;
@@ -608,13 +608,21 @@ async function activate(context) {
 		let fullCommand = '';
 		let fileArg = '';
 		if (filePath) {
+			// When using --goto, VSCode-based editors will auto-detect the workspace from the file path
+			// Don't pass projectPath separately as it can interfere with workspace detection
 			fileArg = `--goto "${filePath}:${lineNumber}:${columnNumber}"`;
-		}
-
-		if (platform === 'win32' && !commandPathIsFilePath) {
-			fullCommand = `cmd /c ${commandPath} "${projectPath}" ${fileArg}`;
+			if (platform === 'win32' && !commandPathIsFilePath) {
+				fullCommand = `cmd /c ${commandPath} ${fileArg}`;
+			} else {
+				fullCommand = `"${commandPath}" ${fileArg}`;
+			}
 		} else {
-			fullCommand = `"${commandPath}" "${projectPath}" ${fileArg}`;
+			// Opening folder without specific file
+			if (platform === 'win32' && !commandPathIsFilePath) {
+				fullCommand = `cmd /c ${commandPath} "${projectPath}"`;
+			} else {
+				fullCommand = `"${commandPath}" "${projectPath}"`;
+			}
 		}
 
 		console.log('VSCode app command:', fullCommand);
