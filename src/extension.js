@@ -164,10 +164,12 @@ async function activate(context) {
 	const config = vscode.workspace.getConfiguration('editorjumper');
 	const currentIDE = config.get('selectedIDE');
 	const ideConfigurations = config.get('ideConfigurations');
+	let slotTargets = config.get('slotTargets') || [];
 
+	// 确保selectedIDE有效，默认为IDEA
 	if (!currentIDE || !ideConfigurations.find(ide => ide.name === currentIDE)) {
 		if (ideConfigurations.length > 0) {
-			await config.update('selectedIDE', ideConfigurations[0].name, true);
+			await config.update('selectedIDE', 'IDEA', true);
 		}
 	}
 
@@ -190,7 +192,7 @@ async function activate(context) {
 
 	// 智能初始化 Slot 2 目标：根据当前编辑器自动设置对等编辑器
 	const currentAppName = getCurrentVscodeAppName();
-	const slotTargets = config.get('slotTargets');
+	slotTargets = config.get('slotTargets') || slotTargets;
 	if (slotTargets && slotTargets.length >= 2 && !slotTargets[1].target) {
 		// 优先从 .idea 配置中读取 VSCode app 名称
 		const projectPath = resolveProjectPath();
@@ -207,9 +209,9 @@ async function activate(context) {
 		console.log('Auto-initialized Slot 2 target:', target);
 	}
 
-	// 创建状态栏项 - 用于选择IDE
+	// 创建状态栏项 - 用于显示当前Slot 1配置
 	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-	statusBarItem.command = 'editorjumper.selectJetBrainsIDE';
+	statusBarItem.command = 'editorjumper.configureSlot';
 	context.subscriptions.push(statusBarItem);
 
 	// 创建状态栏项 - 用于 Slot 2 (对等编辑器)
@@ -218,43 +220,6 @@ async function activate(context) {
 	context.subscriptions.push(slotStatusBarItem);
 
 	updateStatusBar();
-
-	// 注册命令：选择IDE
-	let selectIDECommand = vscode.commands.registerCommand('editorjumper.selectJetBrainsIDE', async () => {
-		const config = vscode.workspace.getConfiguration('editorjumper');
-		const ideConfigurations = config.get('ideConfigurations');
-		
-		// 创建IDE选项列表
-		const items = ideConfigurations
-			.filter(ide => !ide.hidden) // 只显示未隐藏的IDE
-			.map(ide => ({
-				label: ide.name,
-				description: ide.isCustom ? '(Custom)' : '',
-				name: ide.name
-			}));
-		
-		// 添加配置选项
-		items.push({
-			label: '$(gear) Configure Ez-EditorJumper',
-			description: 'Open configuration panel',
-			name: 'configure'
-		});
-
-		const selected = await vscode.window.showQuickPick(items, {
-			placeHolder: 'Select JetBrains IDE or Configure'
-		});
-
-		if (selected) {
-			if (selected.name === 'configure') {
-				// 打开配置界面
-				vscode.commands.executeCommand('editorjumper.configureIDE');
-			} else {
-				// 选择IDE
-				await config.update('selectedIDE', selected.name, true);
-				updateStatusBar();
-			}
-		}
-	});
 
 	// 注册命令：在JetBrains中打开
 	let openInJetBrainsCommand = vscode.commands.registerCommand('editorjumper.openInJetBrains', async (uri) => {
@@ -1035,6 +1000,16 @@ async function activate(context) {
 			return null;
 		}
 		if (host.mode === 'codeWorkspaceWindow') {
+			// For VSCode-based app jumps, return the specific folder containing the current file
+			// instead of the workspace file to avoid opening all workspace folders
+			if (filePath && vscode.workspace.workspaceFolders) {
+				const hit = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
+				if (hit) {
+					console.log('Using specific folder for current file:', hit.uri.fsPath);
+					return hit.uri.fsPath;
+				}
+			}
+			// Fallback to workspace file if no specific file or folder found
 			return host.openPath;
 		}
 		// 优先从 IDEA 配置中读取 VSCode workspace路径（用于 JetBrains 跳转回来）
@@ -1211,7 +1186,7 @@ async function activate(context) {
 		const slot = slotTargets[slotIndex];
 
 		if (!slot.target && slot.type === 'jetbrains') {
-			// Slot 1 默认使用 selectedIDE
+			// Slot 1 默认使用全局 selectedIDE
 			await openInJetBrainsInternal(uri, false, null);
 			return;
 		}
@@ -1353,6 +1328,12 @@ async function activate(context) {
 		};
 
 		await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
+
+		// 如果是 Slot 1 且类型是 JetBrains，同时更新全局 selectedIDE
+		if (selectedSlot.index === 0 && selectedType.type === 'jetbrains') {
+			await config.update('selectedIDE', selectedEditor.name, true);
+		}
+
 		updateStatusBar();
 		vscode.window.showInformationMessage(`Slot ${selectedSlot.index + 1} → ${selectedEditor.name} (${selectedType.type})`);
 	});
@@ -1367,7 +1348,6 @@ async function activate(context) {
 		updateStatusBar();
 	});
 
-	context.subscriptions.push(selectIDECommand);
 	context.subscriptions.push(openInJetBrainsCommand);
 	context.subscriptions.push(openInJetBrainsFastCommand);
 	context.subscriptions.push(configureIDECommand);
@@ -1402,10 +1382,10 @@ function updateStatusBar() {
 
 	if (currentIDE) {
 		statusBarItem.text = `$(link-external) ${currentIDE.name}`;
-		statusBarItem.tooltip = `Click to select JetBrains IDE (Current: ${currentIDE.name})`;
+		statusBarItem.tooltip = `Click to configure Slot 1 (Current: ${currentIDE.name} - Controlled by Slot 1)`;
 	} else {
-		statusBarItem.text = '$(link-external) Select IDE';
-		statusBarItem.tooltip = 'Click to select JetBrains IDE';
+		statusBarItem.text = '$(link-external) IDEA';
+		statusBarItem.tooltip = 'Click to configure Slot 1 (Default: IDEA)';
 	}
 
 	// 更新 Slot 2 状态栏

@@ -161,17 +161,6 @@ function createConfigurationPanel(context) {
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
-                    case 'selectIDE':
-                        console.log('Selecting IDE:', message.ideName);
-                        await config.update('selectedIDE', message.ideName, true);
-                        
-                        // 重新获取最新配置并更新WebView
-                        const selectUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const selectCollapsedSections = selectUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(selectUpdatedConfig.get('ideConfigurations'), selectCollapsedSections);
-                        // 通知主模块更新状态栏
-                        vscode.commands.executeCommand('editorjumper.updateStatusBar');
-                        break;
                     case 'selectPath':
                         const options = {
                             canSelectFiles: true,
@@ -232,6 +221,12 @@ function createConfigurationPanel(context) {
                                 target: message.slotTarget
                             };
                             await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
+                            
+                            // 如果是 Slot 1 且类型是 JetBrains，同时更新全局 selectedIDE
+                            if (slotIdx === 0 && message.slotType === 'jetbrains' && message.slotTarget) {
+                                await config.update('selectedIDE', message.slotTarget, true);
+                            }
+                            
                             vscode.window.showInformationMessage(`Slot ${slotIdx + 1} → ${message.slotTarget} (${message.slotType}) - saved for this project`);
                         }
                         const slotUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
