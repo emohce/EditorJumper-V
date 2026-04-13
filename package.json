@@ -71,6 +71,10 @@
       {
         "command": "editorjumper.jumpBack",
         "title": "Ez-EditorJumper: Jump Back to Source Editor"
+      },
+      {
+        "command": "editorjumper.openInPeerVscodeApp",
+        "title": "Ez-EditorJumper: Open in Peer VSCode App"
       }
     ],
     "keybindings": [
@@ -93,6 +97,10 @@
       {
         "command": "editorjumper.jumpBack",
         "key": "shift+alt+b"
+      },
+      {
+        "command": "editorjumper.openInPeerVscodeApp",
+        "key": "shift+alt+v"
       }
     ],
     "menus": {
@@ -106,6 +114,11 @@
           "command": "editorjumper.openSlot2",
           "group": "navigation",
           "when": "editorTextFocus"
+        },
+        {
+          "command": "editorjumper.openInPeerVscodeApp",
+          "group": "navigation",
+          "when": "editorTextFocus"
         }
       ],
       "explorer/context": [
@@ -115,6 +128,10 @@
         },
         {
           "command": "editorjumper.openSlot2",
+          "group": "navigation"
+        },
+        {
+          "command": "editorjumper.openInPeerVscodeApp",
           "group": "navigation"
         }
       ]

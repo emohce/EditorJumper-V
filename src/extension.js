@@ -23,6 +23,80 @@ if (!defaultIDEPaths['Xcode']) {
 }
 
 /**
+ * 检测当前工作区应该使用的 VSCode-based app
+ * @returns {string} 推荐的 VSCode app 名称
+ */
+function detectPreferredVscodeApp() {
+	const currentAppName = getCurrentVscodeAppName();
+	
+	// 如果当前就是 VSCode-based app，优先返回对等编辑器
+	if (smartPeerMap[currentAppName]) {
+		return smartPeerMap[currentAppName];
+	}
+	
+	// 默认返回 Cursor
+	return 'Cursor';
+}
+
+/**
+ * 自动检测项目类型并返回推荐的 JetBrains IDE
+ * @param {string} projectPath 项目路径
+ * @returns {string|null} 推荐的 IDE 名称，如果无法检测则返回 null
+ */
+function detectProjectType(projectPath) {
+	if (!projectPath || !fs.existsSync(projectPath)) {
+		return null;
+	}
+
+	const filesToCheck = [
+		// Java/IDEA
+		{ files: ['pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'], ide: 'IDEA' },
+		// Python/PyCharm
+		{ files: ['requirements.txt', 'setup.py', 'pyproject.toml', 'Pipfile', 'poetry.lock', 'tox.ini'], ide: 'PyCharm' },
+		// Go/GoLand
+		{ files: ['go.mod', 'go.sum'], ide: 'GoLand' },
+		// JavaScript/TypeScript/WebStorm
+		{ files: ['package.json', 'tsconfig.json', 'angular.json', 'vue.config.js', 'vite.config.ts'], ide: 'WebStorm' },
+		// PHP/PhpStorm
+		{ files: ['composer.json', 'phpunit.xml', '.phpcs.xml'], ide: 'PhpStorm' },
+		// Ruby/RubyMine
+		{ files: ['Gemfile', 'Rakefile', 'config.ru'], ide: 'RubyMine' },
+		// C/C++/CLion
+		{ files: ['CMakeLists.txt', 'Makefile', 'configure.ac', 'meson.build'], ide: 'CLion' },
+		// .NET/Rider
+		{ files: ['*.csproj', '*.sln', 'project.json', 'global.json'], ide: 'Rider' },
+		// Android/Android Studio
+		{ files: ['AndroidManifest.xml', 'build.gradle', 'app/build.gradle'], ide: 'Android Studio' }
+	];
+
+	for (const { files, ide } of filesToCheck) {
+		for (const file of files) {
+			// Handle glob patterns
+			if (file.includes('*')) {
+				try {
+					const dirContents = fs.readdirSync(projectPath);
+					const regex = new RegExp('^' + file.replace('*', '.*'));
+					if (dirContents.some(f => regex.test(f))) {
+						console.log(`Detected project type: ${ide} (found ${file})`);
+						return ide;
+					}
+				} catch (e) {
+					// Ignore errors
+				}
+			} else {
+				const filePath = path.join(projectPath, file);
+				if (fs.existsSync(filePath)) {
+					console.log(`Detected project type: ${ide} (found ${file})`);
+					return ide;
+				}
+			}
+		}
+	}
+
+	return null;
+}
+
+/**
  * 查找命令的完整路径
  * @param {string} command 命令名称
  * @returns {string} 命令的完整路径，如果找不到则返回原命令
@@ -43,8 +117,8 @@ function findCommandPath(command) {
 					return whichOutput;
 				}
 			} catch (e) {
-				// which命令失败，继续使用原始命令
-				console.log(`Could not find absolute path for ${command}: ${e.message}`);
+				// which命令失败，继续使用原始命令（静默失败，因为我们会搜索常见路径）
+				// console.log(`Could not find absolute path for ${command}: ${e.message}`);
 			}
 		}
 		
@@ -118,9 +192,19 @@ async function activate(context) {
 	const currentAppName = getCurrentVscodeAppName();
 	const slotTargets = config.get('slotTargets');
 	if (slotTargets && slotTargets.length >= 2 && !slotTargets[1].target) {
-		const peer = smartPeerMap[currentAppName] || 'Cursor';
-		slotTargets[1].target = peer;
+		// 优先从 .idea 配置中读取 VSCode app 名称
+		const projectPath = resolveProjectPath();
+		let target = null;
+		if (projectPath) {
+			target = walkUpFindIdeaVsCodeAppName(projectPath);
+		}
+		// 如果没有找到，使用智能映射
+		if (!target) {
+			target = smartPeerMap[currentAppName] || 'Cursor';
+		}
+		slotTargets[1].target = target;
 		await config.update('slotTargets', slotTargets, true);
+		console.log('Auto-initialized Slot 2 target:', target);
 	}
 
 	// 创建状态栏项 - 用于选择IDE
@@ -253,9 +337,28 @@ async function activate(context) {
 	// 内部函数：在JetBrains中打开的实际逻辑
 	async function openInJetBrainsInternal(uri, fastMode = false, targetOverride = null) {
 		const config = vscode.workspace.getConfiguration('editorjumper');
-		const selectedIDE = targetOverride || config.get('selectedIDE');
+		let selectedIDE = targetOverride || config.get('selectedIDE');
 		const ideConfigurations = config.get('ideConfigurations');
-		const ideConfig = ideConfigurations.find(ide => ide.name === selectedIDE);
+		let ideConfig = ideConfigurations.find(ide => ide.name === selectedIDE);
+
+		// 如果没有选择IDE，尝试自动检测项目类型
+		if (!ideConfig) {
+			const projectPath = resolveProjectPath();
+			if (projectPath) {
+				const detectedIDE = detectProjectType(projectPath);
+				if (detectedIDE) {
+					const detectedConfig = ideConfigurations.find(ide => ide.name === detectedIDE);
+					if (detectedConfig) {
+						selectedIDE = detectedIDE;
+						ideConfig = detectedConfig;
+						// 自动更新配置
+						await config.update('selectedIDE', detectedIDE, false);
+						updateStatusBar();
+						vscode.window.showInformationMessage(`Auto-detected project type: ${detectedIDE}`);
+					}
+				}
+			}
+		}
 
 		if (!ideConfig) {
 			vscode.window.showErrorMessage('Please select a JetBrains IDE first');
@@ -307,6 +410,13 @@ async function activate(context) {
 				vscode.window.showErrorMessage('No workspace folder is open. Please open a project first.');
 				return;
 			}
+		}
+
+		// 写入 jumpBackSource 信号（用于 JetBrains 跳转回来）
+		try {
+			await config.update('jumpBackSource', getCurrentVscodeAppName(), vscode.ConfigurationTarget.Workspace);
+		} catch (e) {
+			console.warn('Could not write jumpBackSource:', e.message);
 		}
 
 		// 获取命令路径
@@ -541,9 +651,41 @@ async function activate(context) {
 	}
 
 	/**
-	 * Folder root for IDEA .idea lookup and CLI fallback (first folder, or folder containing file when multi-root).
+	 * Workspace-level JetBrains root (directory containing .idea), same source as openInJetBrainsInternal.
+	 */
+	function getWorkspaceJetBrainsRootProjectPath() {
+		const config = vscode.workspace.getConfiguration('editorjumper');
+		const inspect = config.inspect('jetBrainsRootProjectPath');
+		const raw = (inspect && typeof inspect.workspaceValue === 'string') ? inspect.workspaceValue : '';
+		if (!raw || typeof raw !== 'string' || raw.trim() === '') {
+			return null;
+		}
+		const normalized = path.normalize(raw.trim());
+		try {
+			if (fs.existsSync(normalized)) {
+				return normalized;
+			}
+		} catch (e) {
+			console.warn('getWorkspaceJetBrainsRootProjectPath:', e.message);
+		}
+		return null;
+	}
+
+	/**
+	 * Folder root for IDEA .idea lookup and CLI fallback (JetBrains root if configured, else first folder or file's folder when multi-root).
 	 */
 	function resolveFolderProjectPath(filePath) {
+		const jetRoot = getWorkspaceJetBrainsRootProjectPath();
+		if (jetRoot) {
+			return jetRoot;
+		}
+		return resolvePhysicalWorkspaceFolderOnly(filePath);
+	}
+
+	/**
+	 * VS workspace folder(s) only (ignores JetBrains root override). Used to match .code-workspace "folders" entries.
+	 */
+	function resolvePhysicalWorkspaceFolderOnly(filePath) {
 		if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
 			return null;
 		}
@@ -558,8 +700,8 @@ async function activate(context) {
 		return folderPath;
 	}
 
-	function readIdeaVsCodeWorkspacePath(folderRoot) {
-		const xmlPath = path.join(folderRoot, '.idea', 'editorJumperProjectSettings.xml');
+	function readIdeaVsCodeWorkspacePath(projectRootCandidate) {
+		const xmlPath = path.join(projectRootCandidate, '.idea', 'editorJumperProjectSettings.xml');
 		try {
 			if (!fs.existsSync(xmlPath)) {
 				return null;
@@ -581,25 +723,339 @@ async function activate(context) {
 	}
 
 	/**
-	 * Path to pass before --goto: .code-workspace when applicable (host workspaceFile or IDEA project setting), else folder.
+	 * 从 .idea 配置中读取 VSCode app 名称
+	 * @param {string} projectRootCandidate 项目根目录候选
+	 * @returns {string|null} VSCode app 名称，如果找不到则返回 null
 	 */
-	function resolveVscodeOpenPath(filePath) {
-		const wf = vscode.workspace.workspaceFile;
-		if (wf && wf.scheme === 'file') {
-			const p = wf.fsPath;
-			if (fs.existsSync(p)) {
-				return p;
+	function readIdeaVsCodeAppName(projectRootCandidate) {
+		const xmlPath = path.join(projectRootCandidate, '.idea', 'editorJumperProjectSettings.xml');
+		try {
+			if (!fs.existsSync(xmlPath)) {
+				return null;
 			}
-		}
-		const folderRoot = resolveFolderProjectPath(filePath);
-		if (!folderRoot) {
+			const text = fs.readFileSync(xmlPath, 'utf8');
+			let m = text.match(/<option[^>]*name="vsCodeAppName"[^>]*value="([^"]*)"[^>]*\/?>/);
+			if (!m) {
+				m = text.match(/<option[^>]*value="([^"]*)"[^>]*name="vsCodeAppName"[^>]*\/?>/);
+			}
+			if (!m || !m[1]) {
+				return null;
+			}
+			const appName = m[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+			return appName || null;
+		} catch (e) {
+			console.warn('readIdeaVsCodeAppName:', e.message);
 			return null;
 		}
-		const fromIdea = readIdeaVsCodeWorkspacePath(folderRoot);
-		if (fromIdea && fs.existsSync(fromIdea)) {
-			return fromIdea;
+	}
+
+	/**
+	 * 写入 VSCode app 偏好到 .idea 配置，供 JetBrains 插件读取
+	 * @param {string} projectRoot 项目根目录
+	 * @param {string} vscodeAppName VSCode app 名称
+	 * @param {string} workspacePath workspace 路径
+	 */
+	function writeIdeaVsCodeAppPreference(projectRoot, vscodeAppName, workspacePath) {
+		if (!projectRoot || !vscodeAppName) {
+			return;
 		}
-		return folderRoot;
+		
+		const ideaDir = path.join(projectRoot, '.idea');
+		try {
+			// 确保 .idea 目录存在
+			if (!fs.existsSync(ideaDir)) {
+				fs.mkdirSync(ideaDir, { recursive: true });
+			}
+			
+			const xmlPath = path.join(ideaDir, 'editorJumperProjectSettings.xml');
+			let content = '';
+			
+			// 读取现有配置
+			if (fs.existsSync(xmlPath)) {
+				content = fs.readFileSync(xmlPath, 'utf8');
+			}
+			
+			// 转义 XML 特殊字符
+			const escapeXml = (str) => {
+				if (!str) return '';
+				return str.replace(/&/g, '&amp;')
+						.replace(/</g, '&lt;')
+						.replace(/>/g, '&gt;')
+						.replace(/"/g, '&quot;')
+						.replace(/'/g, '&apos;');
+			};
+			
+			// 更新或添加 vsCodeAppName 配置
+			const appNameOption = `<option name="vsCodeAppName" value="${escapeXml(vscodeAppName)}" />`;
+			if (content.includes('name="vsCodeAppName"')) {
+				content = content.replace(/<option[^>]*name="vsCodeAppName"[^>]*\/?>/g, appNameOption);
+			} else {
+				content = content.replace('</component>', `${appNameOption}\n</component>`).replace('</project>', `${appNameOption}\n</project>`);
+				if (!content.includes('<component') && !content.includes('</project>')) {
+					content = `<?xml version="1.0" encoding="UTF-8"?>\n<project>\n${appNameOption}\n</project>`;
+				}
+			}
+			
+			// 更新或添加 vsCodeWorkspacePath 配置
+			if (workspacePath) {
+				const wsPathOption = `<option name="vsCodeWorkspacePath" value="${escapeXml(workspacePath)}" />`;
+				if (content.includes('name="vsCodeWorkspacePath"')) {
+					content = content.replace(/<option[^>]*name="vsCodeWorkspacePath"[^>]*\/?>/g, wsPathOption);
+				} else {
+					content = content.replace('</component>', `${wsPathOption}\n</component>`).replace('</project>', `${wsPathOption}\n</project>`);
+					if (!content.includes('<component') && !content.includes('</project>')) {
+						content = `<?xml version="1.0" encoding="UTF-8"?>\n<project>\n${wsPathOption}\n</project>`;
+					}
+				}
+			}
+			
+			// 写入文件
+			fs.writeFileSync(xmlPath, content, 'utf8');
+			console.log('Wrote VSCode app preference to IDEA config:', vscodeAppName, workspacePath);
+		} catch (e) {
+			console.warn('Failed to write IDEA VSCode preference:', e.message);
+		}
+	}
+
+	/**
+	 * Walk ancestors from startDir to find JetBrains project root (.idea) and return configured VSCode app name if valid.
+	 */
+	function walkUpFindIdeaVsCodeAppName(startDir) {
+		let dir = path.resolve(startDir);
+		const root = path.parse(dir).root;
+		let depth = 0;
+		const maxDepth = 48;
+		while (dir && depth < maxDepth) {
+			const candidate = readIdeaVsCodeAppName(dir);
+			if (candidate) {
+				console.log('Found VSCode app name from IDEA config:', candidate);
+				return candidate;
+			}
+			if (dir === root) {
+				break;
+			}
+			const parent = path.dirname(dir);
+			if (parent === dir) {
+				break;
+			}
+			dir = parent;
+			depth++;
+		}
+		return null;
+	}
+
+	/**
+	 * Walk ancestors from startDir to find JetBrains project root (.idea) and return configured .code-workspace path if valid.
+	 * Matches cases where VS/Cursor opened a subfolder but IntelliJ project (and EditorJumper setting) live at repo root.
+	 */
+	function walkUpFindIdeaVsCodeWorkspacePath(startDir) {
+		let dir = path.resolve(startDir);
+		const root = path.parse(dir).root;
+		let depth = 0;
+		const maxDepth = 48;
+		while (dir && depth < maxDepth) {
+			const candidate = readIdeaVsCodeWorkspacePath(dir);
+			if (candidate && fs.existsSync(candidate)) {
+				return candidate;
+			}
+			if (dir === root) {
+				break;
+			}
+			const parent = path.dirname(dir);
+			if (parent === dir) {
+				break;
+			}
+			dir = parent;
+			depth++;
+		}
+		return null;
+	}
+
+	/**
+	 * Classify project from host workspace API (Cursor/Windsurf/VS Code). No filesystem crawl for type or primary path.
+	 */
+	function describeHostWorkspace(filePath) {
+		const addUnique = (arr, p) => {
+			if (p && !arr.includes(p)) {
+				arr.push(p);
+			}
+		};
+		const wf = vscode.workspace.workspaceFile;
+		if (wf && wf.scheme === 'file') {
+			const fsPath = wf.fsPath;
+			if (fs.existsSync(fsPath)) {
+				const scanRoots = [];
+				if (vscode.workspace.workspaceFolders) {
+					for (const f of vscode.workspace.workspaceFolders) {
+						addUnique(scanRoots, f.uri.fsPath);
+					}
+				}
+				return { mode: 'codeWorkspaceWindow', openPath: fsPath, scanRoots };
+			}
+		}
+		const jetRoot = getWorkspaceJetBrainsRootProjectPath();
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders || folders.length === 0) {
+			if (jetRoot) {
+				return { mode: 'jetbrainsRootOnly', openPath: jetRoot, scanRoots: [jetRoot] };
+			}
+			return null;
+		}
+		const scanRoots = [];
+		addUnique(scanRoots, jetRoot);
+		if (folders.length === 1) {
+			const p = folders[0].uri.fsPath;
+			addUnique(scanRoots, p);
+			return { mode: 'singleFolder', openPath: jetRoot || p, scanRoots };
+		}
+		let primary = folders[0].uri.fsPath;
+		if (filePath) {
+			const hit = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
+			if (hit) {
+				primary = hit.uri.fsPath;
+			}
+		}
+		addUnique(scanRoots, primary);
+		for (const f of folders) {
+			addUnique(scanRoots, f.uri.fsPath);
+		}
+		return { mode: 'multiRootFolder', openPath: jetRoot || primary, scanRoots };
+	}
+
+	function parseCodeWorkspaceFolderPathsAbs(wsFilePath) {
+		let text;
+		try {
+			text = fs.readFileSync(wsFilePath, 'utf8');
+		} catch (e) {
+			return [];
+		}
+		const base = path.dirname(path.resolve(wsFilePath));
+		const paths = [];
+		const re = /"path"\s*:\s*"([^"]+)"/g;
+		let m;
+		while ((m = re.exec(text)) !== null) {
+			let p = m[1].trim();
+			if (!p) {
+				continue;
+			}
+			if (!path.isAbsolute(p)) {
+				p = path.join(base, p);
+			}
+			paths.push(path.normalize(p));
+		}
+		return paths;
+	}
+
+	function pathMatchesWorkspaceRoot(wfPath, entries) {
+		const n = path.normalize(wfPath);
+		for (const e of entries) {
+			if (n === e || n.startsWith(e + path.sep) || e.startsWith(n + path.sep)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	function codeWorkspaceCoversAllWindowFolders(wsFilePath) {
+		const entries = parseCodeWorkspaceFolderPathsAbs(wsFilePath);
+		if (entries.length === 0) {
+			return false;
+		}
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders || folders.length === 0) {
+			return false;
+		}
+		return folders.every(f => pathMatchesWorkspaceRoot(f.uri.fsPath, entries));
+	}
+
+	function walkUpFindMatchingCodeWorkspaceFile(startDir) {
+		let dir = path.resolve(startDir);
+		const root = path.parse(dir).root;
+		let depth = 0;
+		const maxDepth = 48;
+		while (dir && depth < maxDepth) {
+			let names;
+			try {
+				names = fs.readdirSync(dir, { withFileTypes: true });
+			} catch (e) {
+				names = [];
+			}
+			const wsFiles = names
+				.filter(d => d.isFile() && d.name.endsWith('.code-workspace'))
+				.map(d => d.name)
+				.sort();
+			for (const name of wsFiles) {
+				const full = path.join(dir, name);
+				if (fs.existsSync(full) && codeWorkspaceCoversAllWindowFolders(full)) {
+					return full;
+				}
+			}
+			if (dir === root) {
+				break;
+			}
+			const parent = path.dirname(dir);
+			if (parent === dir) {
+				break;
+			}
+			dir = parent;
+			depth++;
+		}
+		return null;
+	}
+
+	function findAutoDetectedCodeWorkspaceFile(filePath) {
+		const roots = [];
+		const add = (p) => {
+			if (p && !roots.includes(p)) {
+				roots.push(p);
+			}
+		};
+		add(resolvePhysicalWorkspaceFolderOnly(filePath));
+		add(getWorkspaceJetBrainsRootProjectPath());
+		if (vscode.workspace.workspaceFolders) {
+			for (const wf of vscode.workspace.workspaceFolders) {
+				add(wf.uri.fsPath);
+			}
+		}
+		for (const r of roots) {
+			const found = walkUpFindMatchingCodeWorkspaceFile(r);
+			if (found) {
+				return found;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Path to pass before --goto: host workspace file, IDEA .code-workspace, auto-detected workspace file, or folder.
+	 */
+	function resolveVscodeOpenPath(filePath) {
+		const host = describeHostWorkspace(filePath);
+		if (!host) {
+			return null;
+		}
+		if (host.mode === 'codeWorkspaceWindow') {
+			return host.openPath;
+		}
+		// 优先从 IDEA 配置中读取 VSCode workspace路径（用于 JetBrains 跳转回来）
+		for (const r of host.scanRoots) {
+			if (r) {
+				const fromIdea = walkUpFindIdeaVsCodeWorkspacePath(r);
+				if (fromIdea) {
+					console.log('Using VSCode workspace path from IDEA config:', fromIdea);
+					return fromIdea;
+				}
+			}
+		}
+		// 自动检测 .code-workspace 文件
+		const autoWs = findAutoDetectedCodeWorkspaceFile(filePath);
+		if (autoWs) {
+			console.log('Using auto-detected .code-workspace:', autoWs);
+			return autoWs;
+		}
+		// 降级到项目根路径
+		console.log('Using project root path:', host.openPath);
+		return host.openPath;
 	}
 
 	function getBuiltinVscodeAppConfig(targetAppName) {
@@ -608,19 +1064,15 @@ async function activate(context) {
 	}
 
 	function canUseMacOpenFallback(commandPath, commandPathIsFilePath, builtinConf) {
-		if (process.platform !== 'darwin' || !builtinConf || !builtinConf.macAppName) {
-			return false;
-		}
-
-		if (commandPathIsFilePath) {
-			return !fs.existsSync(commandPath);
-		}
-
-		const resolvedPath = findCommandPath(commandPath);
-		return resolvedPath === commandPath;
+		// VSCode-based apps should always use their command-line tools directly, not open -a
+		// According to docs/core-commands.md, the correct format is:
+		// /Applications/App.app/Contents/Resources/app/bin/app "projectPath" --goto "filePath:line:column"
+		return false;
 	}
 
 	function buildMacOpenCommandForVscodeApp(builtinConf, openPath, filePath, lineNumber, columnNumber) {
+		// This function is no longer used since canUseMacOpenFallback always returns false
+		// Kept for backward compatibility
 		const appName = builtinConf.macAppName;
 		if (filePath) {
 			const gotoArg = `${filePath}:${lineNumber}:${columnNumber}`;
@@ -673,9 +1125,13 @@ async function activate(context) {
 		if (!commandPathIsFilePath && platform !== 'win32') {
 			const fullPath = findCommandPath(commandPath);
 			if (fullPath !== commandPath) {
+				console.log(`Resolved command path: ${commandPath} -> ${fullPath}`);
 				commandPath = fullPath;
+				commandPathIsFilePath = true;
 			}
 		}
+
+		console.log('Final command path:', commandPath, 'Is file path:', commandPathIsFilePath);
 
 		const { filePath, lineNumber, columnNumber } = resolveFileContext(uri);
 
@@ -690,6 +1146,12 @@ async function activate(context) {
 			await config.update('jumpBackSource', getCurrentVscodeAppName(), vscode.ConfigurationTarget.Workspace);
 		} catch (e) {
 			console.warn('Could not write jumpBackSource:', e.message);
+		}
+
+		// 写入 VSCode app 偏好到 .idea 配置（供 JetBrains 插件读取）
+		const projectRoot = resolveFolderProjectPath(filePath);
+		if (projectRoot) {
+			writeIdeaVsCodeAppPreference(projectRoot, targetAppName, openPath);
 		}
 
 		// 构建命令
@@ -788,9 +1250,21 @@ async function activate(context) {
 	let jumpBackCommand = vscode.commands.registerCommand('editorjumper.jumpBack', async () => {
 		const config = vscode.workspace.getConfiguration('editorjumper');
 		const jumpBackSourceInspect = config.inspect('jumpBackSource');
-		const jumpBackSource = (jumpBackSourceInspect && typeof jumpBackSourceInspect.workspaceValue === 'string')
+		let jumpBackSource = (jumpBackSourceInspect && typeof jumpBackSourceInspect.workspaceValue === 'string')
 			? normalizeVscodeAppName(jumpBackSourceInspect.workspaceValue)
 			: '';
+
+		// 如果 jumpBackSource 为空，尝试从 .idea 配置中读取
+		if (!jumpBackSource) {
+			const projectPath = resolveProjectPath();
+			if (projectPath) {
+				const ideaAppName = walkUpFindIdeaVsCodeAppName(projectPath);
+				if (ideaAppName) {
+					jumpBackSource = ideaAppName;
+					console.log('Using VSCode app name from IDEA config for jump back:', jumpBackSource);
+				}
+			}
+		}
 
 		if (!jumpBackSource) {
 			vscode.window.showInformationMessage('No source editor to jump back to.');
@@ -809,6 +1283,14 @@ async function activate(context) {
 		} catch (e) {
 			console.warn('Could not clear jumpBackSource:', e.message);
 		}
+	});
+
+	// 注册 Open in Peer VSCode App 命令
+	let openInPeerVscodeAppCommand = vscode.commands.registerCommand('editorjumper.openInPeerVscodeApp', async (uri) => {
+		const currentAppName = getCurrentVscodeAppName();
+		const peerAppName = smartPeerMap[currentAppName] || 'Cursor';
+		console.log(`Opening in peer VSCode app: ${currentAppName} -> ${peerAppName}`);
+		await openInVscodeAppInternal(uri, peerAppName);
 	});
 
 	// 注册 Configure Slot 命令
@@ -895,6 +1377,7 @@ async function activate(context) {
 	context.subscriptions.push(openSlot3Command);
 	context.subscriptions.push(openInEditorCommand);
 	context.subscriptions.push(jumpBackCommand);
+	context.subscriptions.push(openInPeerVscodeAppCommand);
 	context.subscriptions.push(configureSlotCommand);
 
 	// 监听配置变化

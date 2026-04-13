@@ -119,17 +119,17 @@ const defaultIDEPaths = {
 // VSCode-rooted app 统一配置
 const vscodeAppConfigs = {
     'Visual Studio Code': {
-        command: { darwin: 'code', win32: 'Code', linux: 'code' },
+        command: { darwin: '/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code', win32: 'Code', linux: 'code' },
         macAppName: 'Visual Studio Code',
         urlScheme: 'vscode'
     },
     'Cursor': {
-        command: { darwin: 'cursor', win32: 'Cursor', linux: 'cursor' },
+        command: { darwin: '/Applications/Cursor.app/Contents/Resources/app/bin/code', win32: 'Cursor', linux: 'cursor' },
         macAppName: 'Cursor',
         urlScheme: 'cursor'
     },
     'Windsurf': {
-        command: { darwin: 'windsurf', win32: 'Windsurf', linux: 'windsurf' },
+        command: { darwin: '/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf', win32: 'Windsurf', linux: 'windsurf' },
         macAppName: 'Windsurf',
         urlScheme: 'windsurf'
     },
