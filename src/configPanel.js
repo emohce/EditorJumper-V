@@ -407,7 +407,6 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
         return `
                     <div id="${rowId}" class="ide-item ${ide.hidden ? 'hidden-ide' : ''}">
                         <div class="ide-info">
-                            ${ide.name === selectedIDE ? '<span class="selected-indicator">✓</span>' : ''}
                             <div>
                                 <strong>${safeName}</strong>
                                 ${ide.isCustom ? ' (Custom)' : ''}
@@ -427,7 +426,6 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                                     Remove
                                 </button>
                             ` : ''}
-                            <button onclick='selectIDE(${nameArg})'>${ide.name === selectedIDE ? 'Selected' : 'Select'}</button>
                         </div>
                     </div>
                 `;
@@ -466,7 +464,18 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             body { padding: 15px; }
             h2 { margin: 15px 0 10px 0; }
             h3 { margin: 10px 0; }
-            .ide-list { margin: 8px 0; }
+            .ide-list { 
+                margin: 8px 0;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .slot-list {
+                margin: 8px 0;
+            }
+            .slot-list .ide-item {
+                margin-bottom: 16px;
+            }
             .collapsible-header {
                 display: flex;
                 justify-content: space-between;
@@ -576,8 +585,19 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
         <!-- ========== Shortcut Slots (Primary Section) ========== -->
         <h2>Shortcut Slots</h2>
         <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. You can assign any JetBrains IDE or VSCode-rooted editor as the target.</div>
-        <div class="ide-list">
+        <div class="slot-list">
             ${slotItemsHtml}
+        </div>
+
+        <!-- ========== JetBrains Root Project Path ========== -->
+        <div class="form-group command-group" style="margin-bottom: 16px; margin-top: 20px;">
+            <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Directory containing .idea (multi-module / multi-root)">
+                <button onclick="selectPathForRootProject()">浏览目录</button>
+                <button onclick="saveRootProjectPath()">Save</button>
+            </div>
+            <div class="note">Leave empty to use workspace folder as project path.</div>
         </div>
 
         <hr style="margin: 30px 0;">
@@ -591,15 +611,6 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             <span id="jetbrains-section-toggle">${collapsedSections['jetbrains-section'] ? '▶' : '▼'}</span>
         </div>
         <div id="jetbrains-section" class="collapsible-content ${collapsedSections['jetbrains-section'] ? 'collapsed' : ''}">
-            <div class="form-group command-group" style="margin-bottom: 16px;">
-                <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Directory containing .idea (multi-module / multi-root)">
-                    <button onclick="selectPathForRootProject()">浏览目录</button>
-                    <button onclick="saveRootProjectPath()">Save</button>
-                </div>
-                <div class="note">Leave empty to use workspace folder as project path.</div>
-            </div>
             <div class="action-buttons">
                 <button onclick="showAddForm()">Add New IDE</button>
             </div>
