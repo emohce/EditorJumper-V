@@ -116,6 +116,11 @@
           "when": "editorTextFocus"
         },
         {
+          "command": "editorjumper.openSlot3",
+          "group": "navigation",
+          "when": "editorTextFocus"
+        },
+        {
           "command": "editorjumper.openInPeerVscodeApp",
           "group": "navigation",
           "when": "editorTextFocus"
@@ -128,6 +133,10 @@
         },
         {
           "command": "editorjumper.openSlot2",
+          "group": "navigation"
+        },
+        {
+          "command": "editorjumper.openSlot3",
           "group": "navigation"
         },
         {
