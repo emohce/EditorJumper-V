@@ -6,6 +6,17 @@ const fs = require('fs');
 
 let configPanel = undefined;
 
+/**
+ * 刷新配置面板（如果面板已打开）
+ */
+function refreshConfigurationPanel() {
+    if (configPanel) {
+        const config = vscode.workspace.getConfiguration('editorjumper');
+        const collapsedSections = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+        configPanel.webview.html = getWebviewContent(config.get('ideConfigurations'), collapsedSections);
+    }
+}
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -1142,5 +1153,6 @@ function highlightIDE(ideName) {
 
 module.exports = {
     createConfigurationPanel,
-    highlightIDE
+    highlightIDE,
+    refreshConfigurationPanel
 }; 

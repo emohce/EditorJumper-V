@@ -167,7 +167,7 @@ async function activate(context) {
 
 	if (!currentIDE || !ideConfigurations.find(ide => ide.name === currentIDE)) {
 		if (ideConfigurations.length > 0) {
-			await config.update('selectedIDE', ideConfigurations[0].name, false);
+			await config.update('selectedIDE', ideConfigurations[0].name, true);
 		}
 	}
 
@@ -203,7 +203,7 @@ async function activate(context) {
 			target = smartPeerMap[currentAppName] || 'Cursor';
 		}
 		slotTargets[1].target = target;
-		await config.update('slotTargets', slotTargets, true);
+		await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
 		console.log('Auto-initialized Slot 2 target:', target);
 	}
 
@@ -250,7 +250,7 @@ async function activate(context) {
 				vscode.commands.executeCommand('editorjumper.configureIDE');
 			} else {
 				// 选择IDE
-				await config.update('selectedIDE', selected.name, false);
+				await config.update('selectedIDE', selected.name, true);
 				updateStatusBar();
 			}
 		}
@@ -352,7 +352,7 @@ async function activate(context) {
 						selectedIDE = detectedIDE;
 						ideConfig = detectedConfig;
 						// 自动更新配置
-						await config.update('selectedIDE', detectedIDE, false);
+						await config.update('selectedIDE', detectedIDE, true);
 						updateStatusBar();
 						vscode.window.showInformationMessage(`Auto-detected project type: ${detectedIDE}`);
 					}
@@ -1352,7 +1352,7 @@ async function activate(context) {
 			target: selectedEditor.name
 		};
 
-		await config.update('slotTargets', slotTargets, true);
+		await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
 		updateStatusBar();
 		vscode.window.showInformationMessage(`Slot ${selectedSlot.index + 1} → ${selectedEditor.name} (${selectedType.type})`);
 	});
@@ -1384,6 +1384,8 @@ async function activate(context) {
 	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
 		if (e.affectsConfiguration('editorjumper')) {
 			updateStatusBar();
+			// 自动刷新配置面板（如果已打开）
+			configPanel.refreshConfigurationPanel();
 		}
 	}));
 
