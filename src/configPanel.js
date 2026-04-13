@@ -213,14 +213,26 @@ function createConfigurationPanel(context) {
                         break;
                     case 'updateSlot':
                         const slotTargets = config.get('slotTargets') || [];
+                        const mergedSlotTargets = [
+                            slotTargets[0] || { slot: 1, type: 'jetbrains', target: '' },
+                            slotTargets[1] || { slot: 2, type: 'vscode-app', target: 'Cursor' },
+                            slotTargets[2] || { slot: 3, type: 'vscode-app', target: 'Windsurf' }
+                        ];
                         const slotIdx = message.slotIndex;
-                        if (slotIdx >= 0 && slotIdx < slotTargets.length) {
-                            slotTargets[slotIdx] = {
+                        if (slotIdx >= 0 && slotIdx < mergedSlotTargets.length) {
+                            let slotTarget = message.slotTarget;
+                            if (slotIdx === 1 && !slotTarget) {
+                                slotTarget = 'Cursor';
+                            }
+                            if (slotIdx === 2 && !slotTarget) {
+                                slotTarget = 'Windsurf';
+                            }
+                            mergedSlotTargets[slotIdx] = {
                                 slot: slotIdx + 1,
                                 type: message.slotType,
-                                target: message.slotTarget
+                                target: slotTarget
                             };
-                            await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
+                            await config.update('slotTargets', mergedSlotTargets, vscode.ConfigurationTarget.Workspace);
                             
                             // 如果是 Slot 1 且类型是 JetBrains，同时更新全局 selectedIDE
                             if (slotIdx === 0 && message.slotType === 'jetbrains' && message.slotTarget) {

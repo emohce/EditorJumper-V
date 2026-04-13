@@ -190,23 +190,23 @@ async function activate(context) {
 		}
 	}
 
-	// 智能初始化 Slot 2 目标：根据当前编辑器自动设置对等编辑器
-	const currentAppName = getCurrentVscodeAppName();
+	// 初始化 Slot 2/3 默认目标
 	slotTargets = config.get('slotTargets') || slotTargets;
-	if (slotTargets && slotTargets.length >= 2 && !slotTargets[1].target) {
-		// 优先从 .idea 配置中读取 VSCode app 名称
-		const projectPath = resolveProjectPath();
-		let target = null;
-		if (projectPath) {
-			target = walkUpFindIdeaVsCodeAppName(projectPath);
+	if (slotTargets && slotTargets.length >= 3) {
+		let slotTargetsChanged = false;
+		if (!slotTargets[1].target) {
+			slotTargets[1].type = 'vscode-app';
+			slotTargets[1].target = 'Cursor';
+			slotTargetsChanged = true;
 		}
-		// 如果没有找到，使用智能映射
-		if (!target) {
-			target = smartPeerMap[currentAppName] || 'Cursor';
+		if (!slotTargets[2].target) {
+			slotTargets[2].type = 'vscode-app';
+			slotTargets[2].target = 'Windsurf';
+			slotTargetsChanged = true;
 		}
-		slotTargets[1].target = target;
-		await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
-		console.log('Auto-initialized Slot 2 target:', target);
+		if (slotTargetsChanged) {
+			await config.update('slotTargets', slotTargets, vscode.ConfigurationTarget.Workspace);
+		}
 	}
 
 	// 创建状态栏项 - 用于显示当前Slot 1配置
