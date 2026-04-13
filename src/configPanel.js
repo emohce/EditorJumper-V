@@ -472,10 +472,10 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             h2 { margin: 15px 0 10px 0; }
             h3 { margin: 10px 0; }
             .ide-list { 
-                margin: 8px 0;
+                margin: 12px 0;
                 display: flex;
                 flex-wrap: wrap;
-                gap: 8px;
+                gap: 12px;
             }
             .slot-list {
                 margin: 8px 0;
@@ -507,8 +507,8 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                padding: 4px 10px;
-                margin: 1px 0;
+                padding: 6px 12px;
+                margin: 2px 0;
                 border: 1px solid var(--vscode-input-border);
                 border-radius: 4px;
             }
@@ -516,9 +516,11 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 display: flex;
                 align-items: center;
                 gap: 10px;
+                margin-right: 12px;
             }
             .ide-controls {
                 display: flex;
+                align-items: center;
                 gap: 10px;
             }
             .selected-indicator {
@@ -555,6 +557,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             button {
                 padding: 4px 8px;
                 cursor: pointer;
+                min-width: 52px;
             }
             button:disabled {
                 cursor: not-allowed;

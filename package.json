@@ -61,6 +61,30 @@
         "title": "Ez-EditorJumper: Open in Slot 3 Editor"
       },
       {
+        "command": "editorjumper.openSlot2Cursor",
+        "title": "Ez-EditorJumper: Open in Cursor"
+      },
+      {
+        "command": "editorjumper.openSlot2Windsurf",
+        "title": "Ez-EditorJumper: Open in Windsurf"
+      },
+      {
+        "command": "editorjumper.openSlot2VSCode",
+        "title": "Ez-EditorJumper: Open in Visual Studio Code"
+      },
+      {
+        "command": "editorjumper.openSlot3Cursor",
+        "title": "Ez-EditorJumper: Open in Cursor"
+      },
+      {
+        "command": "editorjumper.openSlot3Windsurf",
+        "title": "Ez-EditorJumper: Open in Windsurf"
+      },
+      {
+        "command": "editorjumper.openSlot3VSCode",
+        "title": "Ez-EditorJumper: Open in Visual Studio Code"
+      },
+      {
         "command": "editorjumper.openInEditor",
         "title": "Ez-EditorJumper: Open in Editor..."
       },
@@ -88,11 +112,43 @@
       },
       {
         "command": "editorjumper.openSlot2",
-        "key": "shift+alt+i"
+        "key": "shift+alt+i",
+        "when": "editorjumper.slot2MenuTarget == 'generic'"
       },
       {
         "command": "editorjumper.openSlot3",
-        "key": "shift+alt+u"
+        "key": "shift+alt+u",
+        "when": "editorjumper.slot3MenuTarget == 'generic'"
+      },
+      {
+        "command": "editorjumper.openSlot2Cursor",
+        "key": "shift+alt+i",
+        "when": "editorjumper.slot2MenuTarget == 'cursor'"
+      },
+      {
+        "command": "editorjumper.openSlot2Windsurf",
+        "key": "shift+alt+i",
+        "when": "editorjumper.slot2MenuTarget == 'windsurf'"
+      },
+      {
+        "command": "editorjumper.openSlot2VSCode",
+        "key": "shift+alt+i",
+        "when": "editorjumper.slot2MenuTarget == 'vscode'"
+      },
+      {
+        "command": "editorjumper.openSlot3Cursor",
+        "key": "shift+alt+u",
+        "when": "editorjumper.slot3MenuTarget == 'cursor'"
+      },
+      {
+        "command": "editorjumper.openSlot3Windsurf",
+        "key": "shift+alt+u",
+        "when": "editorjumper.slot3MenuTarget == 'windsurf'"
+      },
+      {
+        "command": "editorjumper.openSlot3VSCode",
+        "key": "shift+alt+u",
+        "when": "editorjumper.slot3MenuTarget == 'vscode'"
       },
       {
         "command": "editorjumper.jumpBack",
@@ -111,14 +167,44 @@
           "when": "editorTextFocus"
         },
         {
+          "command": "editorjumper.openSlot2Cursor",
+          "group": "navigation",
+          "when": "editorTextFocus && editorjumper.slot2MenuTarget == 'cursor'"
+        },
+        {
+          "command": "editorjumper.openSlot2Windsurf",
+          "group": "navigation",
+          "when": "editorTextFocus && editorjumper.slot2MenuTarget == 'windsurf'"
+        },
+        {
+          "command": "editorjumper.openSlot2VSCode",
+          "group": "navigation",
+          "when": "editorTextFocus && editorjumper.slot2MenuTarget == 'vscode'"
+        },
+        {
           "command": "editorjumper.openSlot2",
           "group": "navigation",
-          "when": "editorTextFocus"
+          "when": "editorTextFocus && editorjumper.slot2MenuTarget == 'generic'"
+        },
+        {
+          "command": "editorjumper.openSlot3Cursor",
+          "group": "navigation",
+          "when": "editorTextFocus && editorjumper.slot3MenuTarget == 'cursor'"
+        },
+        {
+          "command": "editorjumper.openSlot3Windsurf",
+          "group": "navigation",
+          "when": "editorTextFocus && editorjumper.slot3MenuTarget == 'windsurf'"
+        },
+        {
+          "command": "editorjumper.openSlot3VSCode",
+          "group": "navigation",
+          "when": "editorTextFocus && editorjumper.slot3MenuTarget == 'vscode'"
         },
         {
           "command": "editorjumper.openSlot3",
           "group": "navigation",
-          "when": "editorTextFocus"
+          "when": "editorTextFocus && editorjumper.slot3MenuTarget == 'generic'"
         },
         {
           "command": "editorjumper.openInPeerVscodeApp",
@@ -132,12 +218,44 @@
           "group": "navigation"
         },
         {
+          "command": "editorjumper.openSlot2Cursor",
+          "group": "navigation",
+          "when": "editorjumper.slot2MenuTarget == 'cursor'"
+        },
+        {
+          "command": "editorjumper.openSlot2Windsurf",
+          "group": "navigation",
+          "when": "editorjumper.slot2MenuTarget == 'windsurf'"
+        },
+        {
+          "command": "editorjumper.openSlot2VSCode",
+          "group": "navigation",
+          "when": "editorjumper.slot2MenuTarget == 'vscode'"
+        },
+        {
           "command": "editorjumper.openSlot2",
-          "group": "navigation"
+          "group": "navigation",
+          "when": "editorjumper.slot2MenuTarget == 'generic'"
+        },
+        {
+          "command": "editorjumper.openSlot3Cursor",
+          "group": "navigation",
+          "when": "editorjumper.slot3MenuTarget == 'cursor'"
+        },
+        {
+          "command": "editorjumper.openSlot3Windsurf",
+          "group": "navigation",
+          "when": "editorjumper.slot3MenuTarget == 'windsurf'"
+        },
+        {
+          "command": "editorjumper.openSlot3VSCode",
+          "group": "navigation",
+          "when": "editorjumper.slot3MenuTarget == 'vscode'"
         },
         {
           "command": "editorjumper.openSlot3",
-          "group": "navigation"
+          "group": "navigation",
+          "when": "editorjumper.slot3MenuTarget == 'generic'"
         },
         {
           "command": "editorjumper.openInPeerVscodeApp",

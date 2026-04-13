@@ -11,6 +11,32 @@ let configPanel = require('./configPanel');
 let statusBarItem;
 let slotStatusBarItem;
 
+function normalizeSlotMenuTargetName(targetName) {
+	if (!targetName || typeof targetName !== 'string') {
+		return 'generic';
+	}
+	const normalized = normalizeVscodeAppName(targetName);
+	if (normalized === 'Cursor') {
+		return 'cursor';
+	}
+	if (normalized === 'Windsurf') {
+		return 'windsurf';
+	}
+	if (normalized === 'Visual Studio Code') {
+		return 'vscode';
+	}
+	return 'generic';
+}
+
+async function updateSlotMenuContexts() {
+	const config = vscode.workspace.getConfiguration('editorjumper');
+	const slotTargets = config.get('slotTargets') || [];
+	const slot2 = slotTargets[1] || {};
+	const slot3 = slotTargets[2] || {};
+	await vscode.commands.executeCommand('setContext', 'editorjumper.slot2MenuTarget', normalizeSlotMenuTargetName(slot2.target));
+	await vscode.commands.executeCommand('setContext', 'editorjumper.slot3MenuTarget', normalizeSlotMenuTargetName(slot3.target));
+}
+
 function getCurrentVscodeAppName() {
 	return normalizeVscodeAppName(vscode.env.appName);
 }
@@ -1201,6 +1227,24 @@ async function activate(context) {
 	let openSlot3Command = vscode.commands.registerCommand('editorjumper.openSlot3', async (uri) => {
 		await executeSlot(uri, 2);
 	});
+	let openSlot2CursorCommand = vscode.commands.registerCommand('editorjumper.openSlot2Cursor', async (uri) => {
+		await executeSlot(uri, 1);
+	});
+	let openSlot2WindsurfCommand = vscode.commands.registerCommand('editorjumper.openSlot2Windsurf', async (uri) => {
+		await executeSlot(uri, 1);
+	});
+	let openSlot2VSCodeCommand = vscode.commands.registerCommand('editorjumper.openSlot2VSCode', async (uri) => {
+		await executeSlot(uri, 1);
+	});
+	let openSlot3CursorCommand = vscode.commands.registerCommand('editorjumper.openSlot3Cursor', async (uri) => {
+		await executeSlot(uri, 2);
+	});
+	let openSlot3WindsurfCommand = vscode.commands.registerCommand('editorjumper.openSlot3Windsurf', async (uri) => {
+		await executeSlot(uri, 2);
+	});
+	let openSlot3VSCodeCommand = vscode.commands.registerCommand('editorjumper.openSlot3VSCode', async (uri) => {
+		await executeSlot(uri, 2);
+	});
 
 	// 注册通用 openInEditor 命令（支持 args.target + args.type）
 	let openInEditorCommand = vscode.commands.registerCommand('editorjumper.openInEditor', async (args) => {
@@ -1345,6 +1389,12 @@ async function activate(context) {
 	context.subscriptions.push(openSlot1Command);
 	context.subscriptions.push(openSlot2Command);
 	context.subscriptions.push(openSlot3Command);
+	context.subscriptions.push(openSlot2CursorCommand);
+	context.subscriptions.push(openSlot2WindsurfCommand);
+	context.subscriptions.push(openSlot2VSCodeCommand);
+	context.subscriptions.push(openSlot3CursorCommand);
+	context.subscriptions.push(openSlot3WindsurfCommand);
+	context.subscriptions.push(openSlot3VSCodeCommand);
 	context.subscriptions.push(openInEditorCommand);
 	context.subscriptions.push(jumpBackCommand);
 	context.subscriptions.push(openInPeerVscodeAppCommand);
@@ -1354,10 +1404,13 @@ async function activate(context) {
 	context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
 		if (e.affectsConfiguration('editorjumper')) {
 			updateStatusBar();
+			updateSlotMenuContexts();
 			// 自动刷新配置面板（如果已打开）
 			configPanel.refreshConfigurationPanel();
 		}
 	}));
+
+	updateSlotMenuContexts();
 
 	// 初始显示状态栏
 	statusBarItem.show();
