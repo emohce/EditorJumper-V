@@ -540,6 +540,68 @@ async function activate(context) {
 		return null;
 	}
 
+	/**
+	 * Folder root for IDEA .idea lookup and CLI fallback (first folder, or folder containing file when multi-root).
+	 */
+	function resolveFolderProjectPath(filePath) {
+		if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+			return null;
+		}
+		let folderPath = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		if (vscode.workspace.workspaceFolders.length > 1 && filePath) {
+			const fileUri = vscode.Uri.file(filePath);
+			const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
+			if (workspaceFolder) {
+				folderPath = workspaceFolder.uri.fsPath;
+			}
+		}
+		return folderPath;
+	}
+
+	function readIdeaVsCodeWorkspacePath(folderRoot) {
+		const xmlPath = path.join(folderRoot, '.idea', 'editorJumperProjectSettings.xml');
+		try {
+			if (!fs.existsSync(xmlPath)) {
+				return null;
+			}
+			const text = fs.readFileSync(xmlPath, 'utf8');
+			let m = text.match(/<option[^>]*name="vsCodeWorkspacePath"[^>]*value="([^"]*)"[^>]*\/?>/);
+			if (!m) {
+				m = text.match(/<option[^>]*value="([^"]*)"[^>]*name="vsCodeWorkspacePath"[^>]*\/?>/);
+			}
+			if (!m || !m[1]) {
+				return null;
+			}
+			const p = m[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
+			return p || null;
+		} catch (e) {
+			console.warn('readIdeaVsCodeWorkspacePath:', e.message);
+			return null;
+		}
+	}
+
+	/**
+	 * Path to pass before --goto: .code-workspace when applicable (host workspaceFile or IDEA project setting), else folder.
+	 */
+	function resolveVscodeOpenPath(filePath) {
+		const wf = vscode.workspace.workspaceFile;
+		if (wf && wf.scheme === 'file') {
+			const p = wf.fsPath;
+			if (fs.existsSync(p)) {
+				return p;
+			}
+		}
+		const folderRoot = resolveFolderProjectPath(filePath);
+		if (!folderRoot) {
+			return null;
+		}
+		const fromIdea = readIdeaVsCodeWorkspacePath(folderRoot);
+		if (fromIdea && fs.existsSync(fromIdea)) {
+			return fromIdea;
+		}
+		return folderRoot;
+	}
+
 	function getBuiltinVscodeAppConfig(targetAppName) {
 		const normalizedName = normalizeVscodeAppName(targetAppName);
 		return vscodeAppConfigs[targetAppName] || vscodeAppConfigs[normalizedName] || null;
@@ -558,14 +620,14 @@ async function activate(context) {
 		return resolvedPath === commandPath;
 	}
 
-	function buildMacOpenCommandForVscodeApp(builtinConf, projectPath, filePath, lineNumber, columnNumber) {
+	function buildMacOpenCommandForVscodeApp(builtinConf, openPath, filePath, lineNumber, columnNumber) {
 		const appName = builtinConf.macAppName;
 		if (filePath) {
 			const gotoArg = `${filePath}:${lineNumber}:${columnNumber}`;
-			return `open -a "${appName}" --args --goto "${gotoArg}"`;
+			return `open -a "${appName}" --args "${openPath}" --goto "${gotoArg}"`;
 		}
 
-		return `open -a "${appName}" "${projectPath}"`;
+		return `open -a "${appName}" "${openPath}"`;
 	}
 
 	/**
@@ -617,20 +679,10 @@ async function activate(context) {
 
 		const { filePath, lineNumber, columnNumber } = resolveFileContext(uri);
 
-		// 获取项目路径
-		let projectPath = resolveProjectPath();
-		if (!projectPath) {
+		const openPath = resolveVscodeOpenPath(filePath);
+		if (!openPath) {
 			vscode.window.showErrorMessage('No workspace folder is open. Please open a project first.');
 			return;
-		}
-
-		// 多工作区时，尝试找到包含文件的工作区
-		if (vscode.workspace.workspaceFolders.length > 1 && filePath) {
-			const fileUri = vscode.Uri.file(filePath);
-			const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
-			if (workspaceFolder) {
-				projectPath = workspaceFolder.uri.fsPath;
-			}
 		}
 
 		// 写入 jumpBackSource 信号
@@ -645,11 +697,9 @@ async function activate(context) {
 		const useMacOpenFallback = canUseMacOpenFallback(commandPath, commandPathIsFilePath, builtinConf);
 		let fileArg = '';
 		if (useMacOpenFallback) {
-			fullCommand = buildMacOpenCommandForVscodeApp(builtinConf, projectPath, filePath, lineNumber, columnNumber);
+			fullCommand = buildMacOpenCommandForVscodeApp(builtinConf, openPath, filePath, lineNumber, columnNumber);
 		} else if (filePath) {
-			// When using --goto, VSCode-based editors will auto-detect the workspace from the file path
-			// Don't pass projectPath separately as it can interfere with workspace detection
-			fileArg = `--goto "${filePath}:${lineNumber}:${columnNumber}"`;
+			fileArg = `"${openPath}" --goto "${filePath}:${lineNumber}:${columnNumber}"`;
 			if (platform === 'win32' && !commandPathIsFilePath) {
 				fullCommand = `cmd /c ${commandPath} ${fileArg}`;
 			} else {
@@ -658,9 +708,9 @@ async function activate(context) {
 		} else {
 			// Opening folder without specific file
 			if (platform === 'win32' && !commandPathIsFilePath) {
-				fullCommand = `cmd /c ${commandPath} "${projectPath}"`;
+				fullCommand = `cmd /c ${commandPath} "${openPath}"`;
 			} else {
-				fullCommand = `"${commandPath}" "${projectPath}"`;
+				fullCommand = `"${commandPath}" "${openPath}"`;
 			}
 		}
 
