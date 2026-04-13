@@ -552,7 +552,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 opacity: 0.6;
             }
             .checkbox-group {
-                display: flex;
+                display: none;
                 align-items: center;
                 gap: 10px;
             }

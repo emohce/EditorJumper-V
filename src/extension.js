@@ -1000,16 +1000,6 @@ async function activate(context) {
 			return null;
 		}
 		if (host.mode === 'codeWorkspaceWindow') {
-			// For VSCode-based app jumps, return the specific folder containing the current file
-			// instead of the workspace file to avoid opening all workspace folders
-			if (filePath && vscode.workspace.workspaceFolders) {
-				const hit = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath));
-				if (hit) {
-					console.log('Using specific folder for current file:', hit.uri.fsPath);
-					return hit.uri.fsPath;
-				}
-			}
-			// Fallback to workspace file if no specific file or folder found
 			return host.openPath;
 		}
 		// 优先从 IDEA 配置中读取 VSCode workspace路径（用于 JetBrains 跳转回来）
