@@ -197,10 +197,16 @@ function readApps(forceReload = false) {
 	return cachedApps;
 }
 
-function writeApps(nextApps) {
+function writeApps(nextApps, options = {}) {
 	const filePath = getSharedAppsPath();
 	const current = readApps(true);
 	const merged = mergeApps(current, nextApps);
+	const replaceKeys = options.replaceKeys || [];
+	for (const key of replaceKeys) {
+		if (Object.prototype.hasOwnProperty.call(nextApps, key) && nextApps[key] !== undefined) {
+			merged[key] = nextApps[key];
+		}
+	}
 	merged.revision = (current.revision || 0) + 1;
 	atomicWriteJson(filePath, merged);
 	cachedApps = merged;
@@ -271,7 +277,7 @@ function removeApp(kind, name) {
 	const apps = readApps(true);
 	const key = kind === 'jetbrains' ? 'jetbrainsApps' : 'vscodeApps';
 	const list = (apps[key] || []).filter((item) => item.name !== name);
-	return writeApps({ [key]: list });
+	return writeApps({ [key]: list }, { replaceKeys: [key] });
 }
 
 function setHidden(kind, name, hidden) {
@@ -295,7 +301,7 @@ function replaceIdeConfigurations(list) {
 			hidden: !!item.hidden,
 			updatedAt: nowIso()
 		}))
-	});
+	}, { replaceKeys: ['jetbrainsApps'] });
 }
 
 function replaceVscodeAppConfigurations(list) {
@@ -307,7 +313,7 @@ function replaceVscodeAppConfigurations(list) {
 			hidden: !!item.hidden,
 			updatedAt: nowIso()
 		}))
-	});
+	}, { replaceKeys: ['vscodeApps'] });
 }
 
 function notifyChangeListeners() {
