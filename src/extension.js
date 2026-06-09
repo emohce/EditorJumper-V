@@ -8,6 +8,7 @@ const { ideConfigs, vscodeAppConfigs, smartPeerMap } = require('./defaultIDEPath
 const { normalizeVscodeAppName } = require('./defaultIDEPaths');
 const globalConfigStore = require('./globalConfigStore');
 const projectConfigStore = require('./projectConfigStore');
+const workspaceRouteUtil = require('./workspaceRouteUtil');
 const slotPickerView = require('./slotPickerView');
 const { runLegacyConfigMigration } = require('./legacyConfigMigration');
 let configPanel = require('./configPanel');
@@ -32,8 +33,13 @@ function normalizeSlotMenuTargetName(targetName) {
 	return 'generic';
 }
 
-async function updateSlotMenuContexts() {
-	const slotTargets = projectConfigStore.getSlotTargets();
+function currentRouteFilePath(uri) {
+	return workspaceRouteUtil.resolveRouteFilePath(uri);
+}
+
+async function updateSlotMenuContexts(uri) {
+	const routeFilePath = currentRouteFilePath(uri);
+	const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
 	const slot2 = slotTargets[1] || {};
 	const slot3 = slotTargets[2] || {};
 	await vscode.commands.executeCommand('setContext', 'editorjumper.slot2MenuTarget', normalizeSlotMenuTargetName(slot2.target));
@@ -41,23 +47,28 @@ async function updateSlotMenuContexts() {
 }
 
 function ensureDefaultSlotTargets() {
-	const slots = projectConfigStore.getSlotTargets();
-	let changed = false;
-	const next = [...slots];
-	if (!next[1] || !next[1].target) {
-		next[1] = { slot: 2, type: 'vscode-app', target: 'Cursor' };
-		changed = true;
-	}
-	if (!next[2] || !next[2].target) {
-		next[2] = { slot: 3, type: 'vscode-app', target: 'Windsurf' };
-		changed = true;
-	}
-	if (!next[0] || !next[0].target) {
-		next[0] = { slot: 1, type: 'jetbrains', target: 'IDEA' };
-		changed = true;
-	}
-	if (changed) {
-		projectConfigStore.setSlotTargets(next);
+	const folders = workspaceRouteUtil.listWorkspaceFolderPaths();
+	const routeTargets = folders.length > 0 ? folders : [null];
+	for (const folder of routeTargets) {
+		const routeFilePath = folder || undefined;
+		const slots = projectConfigStore.getSlotTargets(routeFilePath);
+		let changed = false;
+		const next = [...slots];
+		if (!next[1] || !next[1].target) {
+			next[1] = { slot: 2, type: 'vscode-app', target: 'Cursor' };
+			changed = true;
+		}
+		if (!next[2] || !next[2].target) {
+			next[2] = { slot: 3, type: 'vscode-app', target: 'Windsurf' };
+			changed = true;
+		}
+		if (!next[0] || !next[0].target) {
+			next[0] = { slot: 1, type: 'jetbrains', target: 'IDEA' };
+			changed = true;
+		}
+		if (changed) {
+			projectConfigStore.setSlotTargets(next, routeFilePath);
+		}
 	}
 }
 
@@ -299,13 +310,14 @@ async function activate(context) {
 
 	// 内部函数：在JetBrains中打开的实际逻辑
 	async function openInJetBrainsInternal(uri, fastMode = false, targetOverride = null) {
+		const routeFilePath = currentRouteFilePath(uri);
 		const ideConfigurations = globalConfigStore.getIdeConfigurations();
-		let slot1Target = targetOverride || projectConfigStore.getSlot1Target();
+		let slot1Target = targetOverride || projectConfigStore.getSlot1Target(routeFilePath);
 		let ideConfig = ideConfigurations.find(ide => ide.name === slot1Target);
 
 		// 如果 slot1 未配置，尝试自动检测项目类型
 		if (!ideConfig) {
-			const projectPath = resolveProjectPath();
+			const projectPath = projectConfigStore.resolveJetBrainsProjectPath(routeFilePath);
 			if (projectPath) {
 				const detectedIDE = detectProjectType(projectPath);
 				if (detectedIDE) {
@@ -313,9 +325,9 @@ async function activate(context) {
 					if (detectedConfig) {
 						slot1Target = detectedIDE;
 						ideConfig = detectedConfig;
-						const slots = projectConfigStore.getSlotTargets();
+						const slots = projectConfigStore.getSlotTargets(routeFilePath);
 						slots[0] = { slot: 1, type: 'jetbrains', target: detectedIDE };
-						projectConfigStore.setSlotTargets(slots);
+						projectConfigStore.setSlotTargets(slots, routeFilePath);
 						updateStatusBar();
 						vscode.window.showInformationMessage(`Auto-detected project type: ${detectedIDE}`);
 					}
@@ -333,33 +345,25 @@ async function activate(context) {
 		let columnNumber = 1;
 		const editor = vscode.window.activeTextEditor;
 
-		if (uri) {
+		if (uri && uri.scheme === 'file') {
 			filePath = uri.fsPath;
 			if (editor && editor.document.uri.fsPath === filePath) {
 				lineNumber = editor.selection.active.line + 1;
 				columnNumber = editor.selection.active.character
 			}
-		} else if (editor) {
+		} else if (editor && editor.document.uri.scheme === 'file') {
 			filePath = editor.document.uri.fsPath;
 			lineNumber = editor.selection.active.line + 1;
 			columnNumber = editor.selection.active.character
 		}
 
-		// 获取项目根目录
-		let projectPath;
-		const jetBrainsRoot = projectConfigStore.getJetBrainsRootProjectPath(filePath);
-		if (jetBrainsRoot && typeof jetBrainsRoot === 'string' && jetBrainsRoot.trim() !== '') {
-			// 已配置 JetBrains 根项目路径时，统一使用该路径（多模块/多工作目录场景）
-			projectPath = path.normalize(jetBrainsRoot.trim());
-		} else {
-			projectPath = projectConfigStore.resolveDefaultJetBrainsProjectPath(filePath);
-			if (!projectPath) {
-				vscode.window.showErrorMessage('No workspace folder is open. Please open a project first.');
-				return;
-			}
+		const projectPath = projectConfigStore.resolveJetBrainsProjectPath(routeFilePath);
+		if (!projectPath) {
+			vscode.window.showErrorMessage('No workspace folder is open. Please open a project first.');
+			return;
 		}
 
-		projectConfigStore.setJumpBackSource(getCurrentVscodeAppName(), filePath);
+		projectConfigStore.setJumpBackSource(getCurrentVscodeAppName(), routeFilePath);
 
 		// 获取命令路径
 		let commandPath = '';
@@ -585,8 +589,8 @@ async function activate(context) {
 	/**
 	 * 获取工作区项目路径（复用逻辑）
 	 */
-	function resolveProjectPath() {
-		return projectConfigStore.resolveDefaultJetBrainsProjectPath();
+	function resolveProjectPath(uri) {
+		return projectConfigStore.resolveJetBrainsProjectPath(currentRouteFilePath(uri));
 	}
 
 	/**
@@ -1056,7 +1060,7 @@ async function activate(context) {
 			return;
 		}
 
-		projectConfigStore.setJumpBackSource(getCurrentVscodeAppName(), filePath);
+		projectConfigStore.setJumpBackSource(getCurrentVscodeAppName(), currentRouteFilePath(uri));
 
 		// 构建命令
 		let fullCommand = '';
@@ -1104,7 +1108,8 @@ async function activate(context) {
 	 * 执行 Slot 命令
 	 */
 	async function executeSlot(uri, slotIndex) {
-		const slotTargets = projectConfigStore.getSlotTargets();
+		const routeFilePath = currentRouteFilePath(uri);
+		const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
 
 		if (!slotTargets || slotTargets.length <= slotIndex) {
 			vscode.window.showErrorMessage(`Slot ${slotIndex + 1} is not configured.`);
@@ -1114,7 +1119,7 @@ async function activate(context) {
 		const slot = slotTargets[slotIndex];
 
 		if (!slot.target && slot.type === 'jetbrains') {
-			await openInJetBrainsInternal(uri, false, projectConfigStore.getSlot1Target());
+			await openInJetBrainsInternal(uri, false, projectConfigStore.getSlot1Target(routeFilePath));
 			return;
 		}
 
@@ -1168,7 +1173,8 @@ async function activate(context) {
 
 	// 注册 Jump Back 命令
 	let jumpBackCommand = vscode.commands.registerCommand('editorjumper.jumpBack', async () => {
-		let jumpBackSource = normalizeVscodeAppName(projectConfigStore.getJumpBackSource());
+		const routeFilePath = currentRouteFilePath();
+		let jumpBackSource = normalizeVscodeAppName(projectConfigStore.getJumpBackSource(routeFilePath));
 
 		if (!jumpBackSource) {
 			vscode.window.showInformationMessage('No source editor to jump back to.');
@@ -1180,7 +1186,7 @@ async function activate(context) {
 
 		await openInEditorInternal(undefined, sourceType, jumpBackSource);
 
-		projectConfigStore.setJumpBackSource('');
+		projectConfigStore.setJumpBackSource('', routeFilePath);
 	});
 
 	// 注册 Open in Peer VSCode App 命令
@@ -1201,7 +1207,8 @@ async function activate(context) {
 
 	// 注册 Configure Slot 命令
 	let configureSlotCommand = vscode.commands.registerCommand('editorjumper.configureSlot', async () => {
-		const slotTargets = projectConfigStore.getSlotTargets();
+		const routeFilePath = currentRouteFilePath();
+		const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
 
 		// 选择要配置的 Slot
 		const slotItems = slotTargets.map((s, i) => ({
@@ -1257,7 +1264,7 @@ async function activate(context) {
 			target: selectedEditor.name
 		};
 
-		projectConfigStore.setSlotTargets(slotTargets);
+		projectConfigStore.setSlotTargets(slotTargets, routeFilePath);
 
 		updateStatusBar();
 		updateSlotMenuContexts();
@@ -1335,6 +1342,11 @@ async function activate(context) {
 		}
 	}));
 
+	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
+		updateStatusBar();
+		updateSlotMenuContexts();
+	}));
+
 	updateSlotMenuContexts();
 
 	// 初始显示状态栏
@@ -1345,11 +1357,15 @@ function updateStatusBar() {
 	if (!statusBarItem) {
 		return;
 	}
-	const slotTargets = projectConfigStore.getSlotTargets();
+	const routeFilePath = currentRouteFilePath();
+	const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
 	const slot1 = slotTargets[0] || { target: 'IDEA' };
 	const slot1Name = slot1.target || 'IDEA';
+	const folderPath = workspaceRouteUtil.resolvePhysicalWorkspaceFolderOnly(routeFilePath)
+		|| workspaceRouteUtil.listWorkspaceFolderPaths()[0];
+	const folderHint = folderPath ? path.basename(folderPath) : 'workspace';
 	statusBarItem.text = `$(link-external) ${slot1Name}`;
-	statusBarItem.tooltip = `Slot 1: ${slot1.type || 'jetbrains'} → ${slot1Name} (Click to open slot menu above status bar)`;
+	statusBarItem.tooltip = `Slot 1 (${folderHint}): ${slot1.type || 'jetbrains'} → ${slot1Name} (routes by focused editor)`;
 	slotPickerView.refresh();
 }
 
