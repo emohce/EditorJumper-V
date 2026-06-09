@@ -4,4 +4,8 @@ node_modules
 .vscode/
 !.vscode/launch.json
 !.vscode/tasks.json
-.idea
+.idea/
+**/*.iml
+Folder.DotSettings.user
+_fix_result.txt
+.codemark/
