@@ -1,8 +1,8 @@
 {
   "name": "EzVsEditorjumper",
-  "displayName": "EzEditorJumper",
+  "displayName": "EzEditorJumper-V",
   "description": "A VS Code extension that allows you to seamlessly jump between JetBrains IDEs and other popular code editors (such as VS Code, Cursor, Trae, and Windsurf). It maintains your cursor position and editing context, greatly improving development efficiency in multi-editor environments.",
-  "version": "1.2.1",
+  "version": "2.0.4",
   "publisher": "emohce",
   "repository": {
     "type": "git",
@@ -26,9 +26,6 @@
     "trae",
     "windsurf"
   ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
   "main": "./src/extension.js",
   "contributes": {
     "commands": [
@@ -46,59 +43,63 @@
       },
       {
         "command": "editorjumper.configureIDE",
-        "title": "Configure Ez-EditorJumper"
+        "title": "Configure Ez-EditorJumper-V"
       },
       {
         "command": "editorjumper.openSlot1",
-        "title": "Ez-EditorJumper: Open in Slot 1 Editor"
+        "title": "Ez-EditorJumper-V: Open in Slot 1 Editor"
       },
       {
         "command": "editorjumper.openSlot2",
-        "title": "Ez-EditorJumper: Open in Slot 2 Editor"
+        "title": "Ez-EditorJumper-V: Open in Slot 2 Editor"
       },
       {
         "command": "editorjumper.openSlot3",
-        "title": "Ez-EditorJumper: Open in Slot 3 Editor"
+        "title": "Ez-EditorJumper-V: Open in Slot 3 Editor"
       },
       {
         "command": "editorjumper.openSlot2Cursor",
-        "title": "Ez-EditorJumper: Open in Cursor"
+        "title": "Ez-EditorJumper-V: Open in Cursor"
       },
       {
         "command": "editorjumper.openSlot2Windsurf",
-        "title": "Ez-EditorJumper: Open in Windsurf"
+        "title": "Ez-EditorJumper-V: Open in Windsurf"
       },
       {
         "command": "editorjumper.openSlot2VSCode",
-        "title": "Ez-EditorJumper: Open in Visual Studio Code"
+        "title": "Ez-EditorJumper-V: Open in Visual Studio Code"
       },
       {
         "command": "editorjumper.openSlot3Cursor",
-        "title": "Ez-EditorJumper: Open in Cursor"
+        "title": "Ez-EditorJumper-V: Open in Cursor"
       },
       {
         "command": "editorjumper.openSlot3Windsurf",
-        "title": "Ez-EditorJumper: Open in Windsurf"
+        "title": "Ez-EditorJumper-V: Open in Windsurf"
       },
       {
         "command": "editorjumper.openSlot3VSCode",
-        "title": "Ez-EditorJumper: Open in Visual Studio Code"
+        "title": "Ez-EditorJumper-V: Open in Visual Studio Code"
       },
       {
         "command": "editorjumper.openInEditor",
-        "title": "Ez-EditorJumper: Open in Editor..."
+        "title": "Ez-EditorJumper-V: Open in Editor..."
       },
       {
         "command": "editorjumper.configureSlot",
-        "title": "Ez-EditorJumper: Configure Slot Target"
+        "title": "Ez-EditorJumper-V: Configure Slot Target"
       },
       {
         "command": "editorjumper.jumpBack",
-        "title": "Ez-EditorJumper: Jump Back to Source Editor"
+        "title": "Ez-EditorJumper-V: Jump Back to Source Editor"
       },
       {
         "command": "editorjumper.openInPeerVscodeApp",
-        "title": "Ez-EditorJumper: Open in Peer VSCode App"
+        "title": "Ez-EditorJumper-V: Open in Peer VSCode App"
+      },
+      {
+        "command": "editorjumper.pickSlotToJump",
+        "title": "Ez-EditorJumper-V: Pick Slot to Jump"
       }
     ],
     "keybindings": [
@@ -157,6 +158,11 @@
       {
         "command": "editorjumper.openInPeerVscodeApp",
         "key": "shift+alt+v"
+      },
+      {
+        "command": "editorjumper.configureIDE",
+        "key": "ctrl+shift+alt+v",
+        "mac": "cmd+shift+alt+v"
       }
     ],
     "menus": {
@@ -264,178 +270,8 @@
       ]
     },
     "configuration": {
-      "title": "Ez-EditorJumper",
+      "title": "Ez-EditorJumper-V",
       "properties": {
-        "editorjumper.selectedIDE": {
-          "type": "string",
-          "default": "IDEA",
-          "description": "Currently selected JetBrains IDE"
-        },
-        "editorjumper.ideConfigurations": {
-          "type": "array",
-          "default": [
-            {
-              "name": "IDEA",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "WebStorm",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "PyCharm",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "GoLand",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "CLion",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "PhpStorm",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "RubyMine",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "Rider",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            },
-            {
-              "name": "Android Studio",
-              "isCustom": false,
-              "hidden": false,
-              "commandPath": null
-            }
-          ],
-          "description": "Configured JetBrains IDEs",
-          "items": {
-            "type": "object",
-            "required": [
-              "name",
-              "isCustom",
-              "hidden"
-            ],
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Display name for the IDE"
-              },
-              "isCustom": {
-                "type": "boolean",
-                "description": "Whether this is a custom IDE",
-                "default": false
-              },
-              "hidden": {
-                "type": "boolean",
-                "description": "Whether to hide this IDE in the selection menu",
-                "default": false
-              },
-              "commandPath": {
-                "type": ["string", "null"],
-                "description": "Command or path to open the IDE"
-              }
-            }
-          }
-        },
-        "editorjumper.jetBrainsRootProjectPath": {
-          "type": "string",
-          "default": "",
-          "description": "Optional JetBrains root project path (directory containing .idea). Used for multi-module or multi-root workspaces; when set, jump opens this project. Leave empty to use workspace folder as project path."
-        },
-        "editorjumper.slotTargets": {
-          "type": "array",
-          "default": [
-            { "slot": 1, "type": "jetbrains", "target": "" },
-            { "slot": 2, "type": "vscode-app", "target": "" },
-            { "slot": 3, "type": "vscode-app", "target": "" }
-          ],
-          "description": "Shortcut slot targets (project-specific). Each slot has a type (jetbrains or vscode-app) and a target editor name. Slot 1 defaults to selected JetBrains IDE, Slot 2 auto-detects peer editor. Stored per workspace/project.",
-          "items": {
-            "type": "object",
-            "required": ["slot", "type", "target"],
-            "properties": {
-              "slot": {
-                "type": "integer",
-                "description": "Slot number (1, 2, or 3)"
-              },
-              "type": {
-                "type": "string",
-                "enum": ["jetbrains", "vscode-app"],
-                "description": "Editor type: jetbrains or vscode-app"
-              },
-              "target": {
-                "type": "string",
-                "description": "Target editor name (e.g. IDEA, Cursor, Windsurf)"
-              }
-            }
-          }
-        },
-        "editorjumper.vscodeAppConfigurations": {
-          "type": "array",
-          "default": [
-            { "name": "Visual Studio Code", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "Cursor", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "Windsurf", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "Trae", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "Void", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "Kiro", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "Qoder", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "CatPawAI", "commandPath": null, "isCustom": false, "hidden": false },
-            { "name": "Antigravity", "commandPath": null, "isCustom": false, "hidden": false }
-          ],
-          "description": "Configured VSCode-rooted editors",
-          "items": {
-            "type": "object",
-            "required": ["name", "isCustom", "hidden"],
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Display name for the editor"
-              },
-              "isCustom": {
-                "type": "boolean",
-                "description": "Whether this is a custom editor",
-                "default": false
-              },
-              "hidden": {
-                "type": "boolean",
-                "description": "Whether to hide this editor in the selection menu",
-                "default": false
-              },
-              "commandPath": {
-                "type": ["string", "null"],
-                "description": "Command or path to open the editor"
-              }
-            }
-          }
-        },
-        "editorjumper.jumpBackSource": {
-          "type": "string",
-          "default": "",
-          "description": "Internal: source editor name for jump-back. Automatically set when jumping to another editor."
-        },
         "editorjumper.collapsedSections": {
           "type": "object",
           "default": {
@@ -445,6 +281,24 @@
           "description": "Collapse state of configuration sections. Stored across VSCode-based editors."
         }
       }
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "editorjumperPanel",
+          "title": "EzEditorJumper-V",
+          "icon": "$(link-external)"
+        }
+      ]
+    },
+    "views": {
+      "editorjumperPanel": [
+        {
+          "type": "webview",
+          "id": "editorjumper.slotPicker",
+          "name": "Jump Slots"
+        }
+      ]
     }
   },
   "scripts": {

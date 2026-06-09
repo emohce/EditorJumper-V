@@ -1,6 +1,9 @@
 const vscode = require('vscode');
 const os = require('os');
 const fs = require('fs');
+const globalConfigStore = require('./globalConfigStore');
+const projectConfigStore = require('./projectConfigStore');
+const { validateRootProjectPath, getRootProjectOpenDialogOptions } = require('./rootProjectPathUtil');
 // 避免循环引用
 // const extension = require('./extension');
 
@@ -13,8 +16,17 @@ function refreshConfigurationPanel() {
     if (configPanel) {
         const config = vscode.workspace.getConfiguration('editorjumper');
         const collapsedSections = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-        configPanel.webview.html = getWebviewContent(config.get('ideConfigurations'), collapsedSections);
+        configPanel.webview.html = getWebviewContent(globalConfigStore.getIdeConfigurations(), collapsedSections);
     }
+}
+
+function reloadPanelHtml() {
+    if (!configPanel) {
+        return;
+    }
+    const config = vscode.workspace.getConfiguration('editorjumper');
+    const collapsedSections = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
+    configPanel.webview.html = getWebviewContent(globalConfigStore.getIdeConfigurations(), collapsedSections);
 }
 
 function escapeHtml(value) {
@@ -42,7 +54,7 @@ function createConfigurationPanel(context) {
 
     configPanel = vscode.window.createWebviewPanel(
         'ideConfiguration',
-        'Ez-EditorJumper Configuration',
+        'Ez-EditorJumper-V Configuration',
         vscode.ViewColumn.One,
         {
             enableScripts: true,
@@ -54,12 +66,12 @@ function createConfigurationPanel(context) {
     // 强制重新加载配置
     const config = vscode.workspace.getConfiguration('editorjumper');
     const collapsedSections = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-    configPanel.webview.html = getWebviewContent(config.get('ideConfigurations'), collapsedSections);
+    configPanel.webview.html = getWebviewContent(globalConfigStore.getIdeConfigurations(), collapsedSections);
 
     configPanel.webview.onDidReceiveMessage(
         async message => {
             const config = vscode.workspace.getConfiguration('editorjumper');
-            const ideConfigurations = config.get('ideConfigurations');
+            const ideConfigurations = globalConfigStore.getIdeConfigurations();
             
             console.log('Received message from webview:', message.command, message);
             
@@ -91,23 +103,10 @@ function createConfigurationPanel(context) {
                             hidden: newIDE.hidden === true
                         };
                         
-                        if (existingIDE) {
-                            // 更新现有IDE
-                            const updatedConfigurations = ideConfigurations.map(ide => 
-                                ide.name === newIDE.name ? updatedIDE : ide
-                            );
-                            await config.update('ideConfigurations', updatedConfigurations, true);
-                        } else {
-                            // 添加新IDE
-                            await config.update('ideConfigurations', [...ideConfigurations, updatedIDE], true);
-                        }
+                        globalConfigStore.upsertApp('jetbrains', updatedIDE);
                         
                         vscode.window.showInformationMessage(`IDE configuration saved: ${newIDE.name}`);
-                        
-                        // 重新获取最新配置并更新WebView
-                        const addUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const addCollapsedSections = addUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(addUpdatedConfig.get('ideConfigurations'), addCollapsedSections);
+                        reloadPanelHtml();
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -121,43 +120,30 @@ function createConfigurationPanel(context) {
                                 hidden: message.ide.hidden === true
                             } : ide
                         );
-                        await config.update('ideConfigurations', updatedConfigurations, true);
+                        globalConfigStore.replaceIdeConfigurations(updatedConfigurations);
                         
-                        // 如果当前选中的IDE被隐藏了，自动选择第一个未隐藏的IDE
-                        const selectedIDEForUpdate = config.get('selectedIDE');
-                        if (message.ide.name === selectedIDEForUpdate && message.ide.hidden === true) {
+                        if (message.ide.name === projectConfigStore.getSlot1Target() && message.ide.hidden === true) {
                             const firstVisibleIDE = updatedConfigurations.find(ide => !ide.hidden);
                             if (firstVisibleIDE) {
-                                await config.update('selectedIDE', firstVisibleIDE.name, true);
+                                const slots = projectConfigStore.getSlotTargets();
+                                slots[0] = { slot: 1, type: 'jetbrains', target: firstVisibleIDE.name };
+                                projectConfigStore.setSlotTargets(slots);
                             }
                         }
-                        
-                        // 重新获取最新配置并更新WebView
-                        const updateUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const updateCollapsedSections = updateUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(updateUpdatedConfig.get('ideConfigurations'), updateCollapsedSections);
+                        reloadPanelHtml();
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
                     case 'removeIDE':
                         console.log('Removing IDE:', message.ideName);
-                        const selectedIDEForRemove = config.get('selectedIDE');
-                        if (message.ideName === selectedIDEForRemove) {
+                        if (message.ideName === projectConfigStore.getSlot1Target()) {
                             console.log('Cannot remove currently selected IDE');
-                            vscode.window.showErrorMessage('Cannot remove currently selected IDE. Please select another IDE first');
+                            vscode.window.showErrorMessage('Cannot remove Slot 1 IDE. Please select another IDE first');
                             return;
                         }
-                        const filteredConfigurations = ideConfigurations.filter(ide => ide.name !== message.ideName);
-                        console.log('Filtered configurations:', filteredConfigurations);
-                        console.log('Original configurations:', ideConfigurations);
-                        console.log('IDE to remove:', message.ideName);
-                        await config.update('ideConfigurations', filteredConfigurations, true);
+                        globalConfigStore.removeApp('jetbrains', message.ideName);
                         vscode.window.showInformationMessage('IDE configuration removed');
-                        
-                        // 重新获取最新配置并更新WebView
-                        const updatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const removeCollapsedSections = updatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(updatedConfig.get('ideConfigurations'), removeCollapsedSections);
+                        reloadPanelHtml();
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -188,31 +174,31 @@ function createConfigurationPanel(context) {
                         }
                         break;
                     case 'selectPathForRootProject':
-                        const folderOptions = {
-                            canSelectFiles: false,
-                            canSelectFolders: true,
-                            canSelectMany: false,
-                            openLabel: 'Select Folder',
-                            title: 'Select JetBrains Root Project Path (directory containing .idea)'
-                        };
-                        const folderResult = await vscode.window.showOpenDialog(folderOptions);
+                        const folderResult = await vscode.window.showOpenDialog(getRootProjectOpenDialogOptions());
                         if (folderResult && folderResult[0]) {
-                            await config.update('jetBrainsRootProjectPath', folderResult[0].fsPath, vscode.ConfigurationTarget.Workspace);
-                            const rootUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                            const rootCollapsedSections = rootUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                            configPanel.webview.html = getWebviewContent(rootUpdatedConfig.get('ideConfigurations'), rootCollapsedSections);
+                            const selectedRootPath = folderResult[0].fsPath;
+                            const rootPathCheck = validateRootProjectPath(selectedRootPath);
+                            if (!rootPathCheck.ok) {
+                                vscode.window.showErrorMessage(rootPathCheck.message);
+                                break;
+                            }
+                            projectConfigStore.setJetBrainsRootProjectPath(selectedRootPath);
+                            reloadPanelHtml();
                         }
                         break;
                     case 'saveRootProjectPath':
                         const pathToSave = (message.path != null && message.path !== undefined) ? String(message.path) : '';
-                        await config.update('jetBrainsRootProjectPath', pathToSave, vscode.ConfigurationTarget.Workspace);
+                        const savePathCheck = validateRootProjectPath(pathToSave);
+                        if (!savePathCheck.ok) {
+                            vscode.window.showErrorMessage(savePathCheck.message);
+                            break;
+                        }
+                        projectConfigStore.setJetBrainsRootProjectPath(pathToSave);
                         vscode.window.showInformationMessage('JetBrains root project path saved.');
-                        const saveUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const saveCollapsedSections = saveUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(saveUpdatedConfig.get('ideConfigurations'), saveCollapsedSections);
+                        reloadPanelHtml();
                         break;
                     case 'updateSlot':
-                        const slotTargets = config.get('slotTargets') || [];
+                        const slotTargets = projectConfigStore.getSlotTargets();
                         const mergedSlotTargets = [
                             slotTargets[0] || { slot: 1, type: 'jetbrains', target: '' },
                             slotTargets[1] || { slot: 2, type: 'vscode-app', target: 'Cursor' },
@@ -232,48 +218,27 @@ function createConfigurationPanel(context) {
                                 type: message.slotType,
                                 target: slotTarget
                             };
-                            await config.update('slotTargets', mergedSlotTargets, vscode.ConfigurationTarget.Workspace);
-                            
-                            // 如果是 Slot 1 且类型是 JetBrains，同时更新全局 selectedIDE
-                            if (slotIdx === 0 && message.slotType === 'jetbrains' && message.slotTarget) {
-                                await config.update('selectedIDE', message.slotTarget, true);
-                            }
-                            
+                            projectConfigStore.setSlotTargets(mergedSlotTargets);
                             vscode.window.showInformationMessage(`Slot ${slotIdx + 1} → ${message.slotTarget} (${message.slotType}) - saved for this project`);
                         }
-                        const slotUpdatedConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const slotCollapsedSections = slotUpdatedConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(slotUpdatedConfig.get('ideConfigurations'), slotCollapsedSections);
+                        reloadPanelHtml();
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
                     case 'addVscodeApp':
                         const newApp = message.app;
-                        const vscodeApps = config.get('vscodeAppConfigurations') || [];
-                        const existingApp = vscodeApps.find(a => a.name === newApp.name);
-                        
-                        let updatedApp = {
+                        globalConfigStore.upsertApp('vscode', {
                             ...newApp,
                             isCustom: newApp.isCustom === true,
                             hidden: newApp.hidden === true
-                        };
-                        
-                        if (existingApp) {
-                            const updatedApps = vscodeApps.map(a => a.name === newApp.name ? updatedApp : a);
-                            await config.update('vscodeAppConfigurations', updatedApps, true);
-                        } else {
-                            await config.update('vscodeAppConfigurations', [...vscodeApps, updatedApp], true);
-                        }
-                        
+                        });
                         vscode.window.showInformationMessage(`VSCode app configuration saved: ${newApp.name}`);
-                        const appAddConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const appAddCollapsedSections = appAddConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(appAddConfig.get('ideConfigurations'), appAddCollapsedSections);
+                        reloadPanelHtml();
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
                     case 'updateVscodeApp':
-                        const vscodeAppsForUpdate = config.get('vscodeAppConfigurations') || [];
+                        const vscodeAppsForUpdate = globalConfigStore.getVscodeAppConfigurations();
                         const updatedVscodeApps = vscodeAppsForUpdate.map(a =>
                             a.name === message.app.name ? {
                                 ...a,
@@ -282,21 +247,15 @@ function createConfigurationPanel(context) {
                                 hidden: message.app.hidden === true
                             } : a
                         );
-                        await config.update('vscodeAppConfigurations', updatedVscodeApps, true);
-                        const appUpdateConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const appUpdateCollapsedSections = appUpdateConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(appUpdateConfig.get('ideConfigurations'), appUpdateCollapsedSections);
+                        globalConfigStore.replaceVscodeAppConfigurations(updatedVscodeApps);
+                        reloadPanelHtml();
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
                     case 'removeVscodeApp':
-                        const vscodeAppsForRemove = config.get('vscodeAppConfigurations') || [];
-                        const filteredApps = vscodeAppsForRemove.filter(a => a.name !== message.appName);
-                        await config.update('vscodeAppConfigurations', filteredApps, true);
+                        globalConfigStore.removeApp('vscode', message.appName);
                         vscode.window.showInformationMessage('VSCode app configuration removed');
-                        const appRemoveConfig = vscode.workspace.getConfiguration('editorjumper');
-                        const appRemoveCollapsedSections = appRemoveConfig.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-                        configPanel.webview.html = getWebviewContent(appRemoveConfig.get('ideConfigurations'), appRemoveCollapsedSections);
+                        reloadPanelHtml();
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
@@ -352,7 +311,7 @@ function createConfigurationPanel(context) {
 function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-section': true, 'vscode-section': true }) {
     const ideTypes = ["IDEA", "WebStorm", "PyCharm", "GoLand", "CLion", "PhpStorm", "RubyMine", "Rider", "Android Studio"];
     const config = vscode.workspace.getConfiguration('editorjumper');
-    const selectedIDE = config.get('selectedIDE');
+    const slot1Target = projectConfigStore.getSlot1Target();
     
     // 获取当前平台类型和对应的命令字段名
     const platform = process.platform;
@@ -365,15 +324,12 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
     // 是否是macOS平台
     const isMac = platform === 'darwin';
 
-    const rootProjectPathInspect = config.inspect('jetBrainsRootProjectPath');
-    const jetBrainsRootProjectPathRaw = (rootProjectPathInspect && typeof rootProjectPathInspect.workspaceValue === 'string')
-        ? rootProjectPathInspect.workspaceValue
-        : '';
+    const jetBrainsRootProjectPathRaw = projectConfigStore.getJetBrainsRootProjectPath();
     const jetBrainsRootProjectPath = escapeHtml(jetBrainsRootProjectPathRaw || '');
 
     // Slot 和 VSCode App 数据
-    const slotTargets = config.get('slotTargets') || [];
-    const vscodeAppConfigurations = config.get('vscodeAppConfigurations') || [];
+    const slotTargets = projectConfigStore.getSlotTargets();
+    const vscodeAppConfigurations = globalConfigStore.getVscodeAppConfigurations();
     const slotShortcuts = ['Shift+Alt+O / Shift+Alt+P', 'Shift+Alt+I', 'Shift+Alt+U'];
 
     // 构建所有可选编辑器列表（用于 Slot 下拉框）
@@ -429,7 +385,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                             <button onclick='editIDE(${nameArg})'>Edit</button>
                             ${ide.isCustom ? `
                                 <button onclick='removeIDE(${nameArg})'
-                                    ${ide.name === selectedIDE ? 'disabled title="Cannot remove currently selected IDE"' : ''}>
+                                    ${ide.name === slot1Target ? 'disabled title="Cannot remove Slot 1 IDE"' : ''}>
                                     Remove
                                 </button>
                             ` : ''}
@@ -590,7 +546,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
         </style>
     </head>
     <body>
-        <h2>Ez-EditorJumper Configurations</h2>
+        <h2>Ez-EditorJumper-V Configurations</h2>
 
         <!-- ========== Shortcut Slots (Primary Section) ========== -->
         <h2>Shortcut Slots</h2>
@@ -603,11 +559,11 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
         <div class="form-group command-group" style="margin-bottom: 16px; margin-top: 20px;">
             <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
             <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Directory containing .idea (multi-module / multi-root)">
-                <button onclick="selectPathForRootProject()">浏览目录</button>
+                <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Folder or project file (e.g. .sln/.ipr/.iml, CLion folder)">
+                <button onclick="selectPathForRootProject()">浏览路径</button>
                 <button onclick="saveRootProjectPath()">Save</button>
             </div>
-            <div class="note">Leave empty to use workspace folder as project path.</div>
+            <div class="note">可选文件夹或项目文件（Rider: .sln/.csproj；IDEA/CLion: 目录或 .ipr/.iml 等）。不支持图片、PDF、Office 等常用非项目文件。留空则使用当前文件所在项目文件夹；多根工作区取当前项目，否则取 workspace 内第一个真实文件夹。</div>
         </div>
 
         <hr style="margin: 30px 0;">
@@ -717,7 +673,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 alert('Failed to initialize VS Code API. Please reload the window.');
             }
             const configurations = ${JSON.stringify(ideConfigurations)};
-            const selectedIDE = ${JSON.stringify(selectedIDE)};
+            const slot1Target = ${JSON.stringify(slot1Target)};
             const platform = '${platform}';
             const commandLabel = '${commandLabel}';
             const isMac = ${isMac};
@@ -931,7 +887,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             }
 
             function removeIDE(name) {
-                if (name === selectedIDE) {
+                if (name === slot1Target) {
                     return;
                 }
                 
