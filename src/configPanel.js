@@ -3,6 +3,7 @@ const os = require('os');
 const fs = require('fs');
 const globalConfigStore = require('./globalConfigStore');
 const projectConfigStore = require('./projectConfigStore');
+const workspaceRouteUtil = require('./workspaceRouteUtil');
 const { validateRootProjectPath, getRootProjectOpenDialogOptions } = require('./rootProjectPathUtil');
 // 避免循环引用
 // const extension = require('./extension');
@@ -70,6 +71,7 @@ function createConfigurationPanel(context) {
 
     configPanel.webview.onDidReceiveMessage(
         async message => {
+            const routeFilePath = workspaceRouteUtil.resolveRouteFilePath();
             const config = vscode.workspace.getConfiguration('editorjumper');
             const ideConfigurations = globalConfigStore.getIdeConfigurations();
             
@@ -122,12 +124,12 @@ function createConfigurationPanel(context) {
                         );
                         globalConfigStore.replaceIdeConfigurations(updatedConfigurations);
                         
-                        if (message.ide.name === projectConfigStore.getSlot1Target() && message.ide.hidden === true) {
+                        if (message.ide.name === projectConfigStore.getSlot1Target(routeFilePath) && message.ide.hidden === true) {
                             const firstVisibleIDE = updatedConfigurations.find(ide => !ide.hidden);
                             if (firstVisibleIDE) {
-                                const slots = projectConfigStore.getSlotTargets();
+                                const slots = projectConfigStore.getSlotTargets(routeFilePath);
                                 slots[0] = { slot: 1, type: 'jetbrains', target: firstVisibleIDE.name };
-                                projectConfigStore.setSlotTargets(slots);
+                                projectConfigStore.setSlotTargets(slots, routeFilePath);
                             }
                         }
                         reloadPanelHtml();
@@ -136,7 +138,7 @@ function createConfigurationPanel(context) {
                         break;
                     case 'removeIDE':
                         console.log('Removing IDE:', message.ideName);
-                        if (message.ideName === projectConfigStore.getSlot1Target()) {
+                        if (message.ideName === projectConfigStore.getSlot1Target(routeFilePath)) {
                             console.log('Cannot remove currently selected IDE');
                             vscode.window.showErrorMessage('Cannot remove Slot 1 IDE. Please select another IDE first');
                             return;
@@ -182,8 +184,16 @@ function createConfigurationPanel(context) {
                                 vscode.window.showErrorMessage(rootPathCheck.message);
                                 break;
                             }
-                            projectConfigStore.setJetBrainsRootProjectPath(selectedRootPath);
-                            reloadPanelHtml();
+                            projectConfigStore.setJetBrainsRootProjectPath(
+                                selectedRootPath,
+                                routeFilePath,
+                                message.folderAnchor
+                            );
+                            configPanel.webview.postMessage({
+                                command: 'setRootProjectPath',
+                                path: selectedRootPath,
+                                folderAnchor: message.folderAnchor
+                            });
                         }
                         break;
                     case 'saveRootProjectPath':
@@ -193,12 +203,16 @@ function createConfigurationPanel(context) {
                             vscode.window.showErrorMessage(savePathCheck.message);
                             break;
                         }
-                        projectConfigStore.setJetBrainsRootProjectPath(pathToSave);
+                        projectConfigStore.setJetBrainsRootProjectPath(
+                            pathToSave,
+                            routeFilePath,
+                            message.folderAnchor
+                        );
                         vscode.window.showInformationMessage('JetBrains root project path saved.');
                         reloadPanelHtml();
                         break;
                     case 'updateSlot':
-                        const slotTargets = projectConfigStore.getSlotTargets();
+                        const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
                         const mergedSlotTargets = [
                             slotTargets[0] || { slot: 1, type: 'jetbrains', target: '' },
                             slotTargets[1] || { slot: 2, type: 'vscode-app', target: 'Cursor' },
@@ -218,7 +232,7 @@ function createConfigurationPanel(context) {
                                 type: message.slotType,
                                 target: slotTarget
                             };
-                            projectConfigStore.setSlotTargets(mergedSlotTargets);
+                            projectConfigStore.setSlotTargets(mergedSlotTargets, routeFilePath);
                             vscode.window.showInformationMessage(`Slot ${slotIdx + 1} → ${message.slotTarget} (${message.slotType}) - saved for this project`);
                         }
                         reloadPanelHtml();
@@ -311,7 +325,8 @@ function createConfigurationPanel(context) {
 function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-section': true, 'vscode-section': true }) {
     const ideTypes = ["IDEA", "WebStorm", "PyCharm", "GoLand", "CLion", "PhpStorm", "RubyMine", "Rider", "Android Studio"];
     const config = vscode.workspace.getConfiguration('editorjumper');
-    const slot1Target = projectConfigStore.getSlot1Target();
+    const routeFilePath = workspaceRouteUtil.resolveRouteFilePath();
+    const slot1Target = projectConfigStore.getSlot1Target(routeFilePath);
     
     // 获取当前平台类型和对应的命令字段名
     const platform = process.platform;
@@ -324,11 +339,21 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
     // 是否是macOS平台
     const isMac = platform === 'darwin';
 
-    const jetBrainsRootProjectPathRaw = projectConfigStore.getJetBrainsRootProjectPath();
-    const jetBrainsRootProjectPath = escapeHtml(jetBrainsRootProjectPathRaw || '');
+    const folderRoutes = projectConfigStore.listFolderRouteConfigs(routeFilePath);
+    const folderRoutesHtml = folderRoutes.map((route, idx) => `
+            <div class="folder-route" style="margin-bottom: 12px; padding: 8px; border: 1px solid var(--vscode-input-border); border-radius: 4px;">
+                <label><strong>${escapeHtml(route.folderName)}</strong></label>
+                <div class="note" style="margin: 4px 0 8px;">${escapeHtml(route.folderPath)}</div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="rootProjectPath-${idx}" data-anchor="${escapeHtml(route.anchorPath)}" style="flex: 1;" value="${escapeHtml(route.jetBrainsRootProjectPath || '')}" placeholder="Folder or project file (e.g. .sln/.ipr/.iml)">
+                    <button onclick="selectPathForRootProject(${idx})">浏览路径</button>
+                    <button onclick="saveRootProjectPath(${idx})">Save</button>
+                </div>
+            </div>
+        `).join('');
 
     // Slot 和 VSCode App 数据
-    const slotTargets = projectConfigStore.getSlotTargets();
+    const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
     const vscodeAppConfigurations = globalConfigStore.getVscodeAppConfigurations();
     const slotShortcuts = ['Shift+Alt+O / Shift+Alt+P', 'Shift+Alt+I', 'Shift+Alt+U'];
 
@@ -550,20 +575,16 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
 
         <!-- ========== Shortcut Slots (Primary Section) ========== -->
         <h2>Shortcut Slots</h2>
-        <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. You can assign any JetBrains IDE or VSCode-rooted editor as the target.</div>
+        <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. Slots below apply to the sub-project of the currently focused editor (or the first workspace folder when no editor is open).</div>
         <div class="slot-list">
             ${slotItemsHtml}
         </div>
 
-        <!-- ========== JetBrains Root Project Path ========== -->
+        <!-- ========== JetBrains Root Project Path (per workspace folder) ========== -->
         <div class="form-group command-group" style="margin-bottom: 16px; margin-top: 20px;">
-            <label for="rootProjectPath">JetBrains 根项目路径（可选）:</label>
-            <div style="display: flex; gap: 10px; align-items: center;">
-                <input type="text" id="rootProjectPath" style="flex: 1;" value="${jetBrainsRootProjectPath}" placeholder="Folder or project file (e.g. .sln/.ipr/.iml, CLion folder)">
-                <button onclick="selectPathForRootProject()">浏览路径</button>
-                <button onclick="saveRootProjectPath()">Save</button>
-            </div>
-            <div class="note">可选文件夹或项目文件（Rider: .sln/.csproj；IDEA/CLion: 目录或 .ipr/.iml 等）。不支持图片、PDF、Office 等常用非项目文件。留空则使用当前文件所在项目文件夹；多根工作区取当前项目，否则取 workspace 内第一个真实文件夹。</div>
+            <label>JetBrains 根项目路径（按工作区子项目）:</label>
+            <div class="note" style="margin: 6px 0 10px;">每个 workspace 子项目可单独配置 Rider .sln、IDEA 目录等；留空则跳转时使用该子项目文件夹。配置保存在 OS 全局缓存，VS-IDE 间共用。跳转时以当前聚焦编辑器所在子项目为准。</div>
+            ${folderRoutesHtml}
         </div>
 
         <hr style="margin: 30px 0;">
@@ -921,22 +942,25 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 });
             }
 
-            function selectPathForRootProject() {
+            function selectPathForRootProject(idx) {
                 if (!vscode) {
                     alert('VS Code API not initialized. Please reload the window.');
                     return;
                 }
-                vscode.postMessage({ command: 'selectPathForRootProject' });
+                const el = document.getElementById('rootProjectPath-' + idx);
+                const folderAnchor = el ? el.getAttribute('data-anchor') : '';
+                vscode.postMessage({ command: 'selectPathForRootProject', folderAnchor: folderAnchor });
             }
 
-            function saveRootProjectPath() {
+            function saveRootProjectPath(idx) {
                 if (!vscode) {
                     alert('VS Code API not initialized. Please reload the window.');
                     return;
                 }
-                const el = document.getElementById('rootProjectPath');
+                const el = document.getElementById('rootProjectPath-' + idx);
                 const path = el ? el.value : '';
-                vscode.postMessage({ command: 'saveRootProjectPath', path: path });
+                const folderAnchor = el ? el.getAttribute('data-anchor') : '';
+                vscode.postMessage({ command: 'saveRootProjectPath', path: path, folderAnchor: folderAnchor });
             }
 
             // ========== Slot 相关函数 ==========
@@ -1074,8 +1098,13 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                         document.getElementById('command').value = message.path;
                         break;
                     case 'setRootProjectPath':
-                        const rootEl = document.getElementById('rootProjectPath');
-                        if (rootEl) rootEl.value = message.path || '';
+                        if (message.folderAnchor) {
+                            document.querySelectorAll('[data-anchor]').forEach((rootEl) => {
+                                if (rootEl.getAttribute('data-anchor') === message.folderAnchor) {
+                                    rootEl.value = message.path || '';
+                                }
+                            });
+                        }
                         break;
                     case 'highlightIDE':
                         const ideElement = document.getElementById(domId('ide', message.ideName));

@@ -3,7 +3,12 @@ const path = require('path');
 const vscode = require('vscode');
 const { getCacheRootDir } = require('./cachePaths');
 const { normalizeAnchorPath, computeConfigKey, buildProjectCacheFileName } = require('./pathKeyUtil');
-const { parseCodeWorkspaceFolderPaths } = require('./codeWorkspaceUtil');
+const {
+	resolveRouteFilePath,
+	listWorkspaceFolderPaths,
+	resolvePhysicalWorkspaceFolderOnly,
+	resolveConfigAnchorPath
+} = require('./workspaceRouteUtil');
 
 const PLUGIN_SUFFIX = 'jumper-v';
 
@@ -15,29 +20,14 @@ function defaultSlotTargets() {
 	];
 }
 
-function resolvePhysicalWorkspaceFolderOnly(filePath) {
-	if (filePath) {
-		const fileUri = vscode.Uri.file(filePath);
-		const workspaceFolder = vscode.workspace.getWorkspaceFolder(fileUri);
-		if (workspaceFolder) {
-			return workspaceFolder.uri.fsPath;
-		}
-	}
-	if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-		return vscode.workspace.workspaceFolders[0].uri.fsPath;
-	}
-	const wf = vscode.workspace.workspaceFile;
-	if (wf && wf.scheme === 'file' && fs.existsSync(wf.fsPath) && wf.fsPath.endsWith('.code-workspace')) {
-		const folders = parseCodeWorkspaceFolderPaths(wf.fsPath);
-		if (folders.length > 0 && fs.existsSync(folders[0])) {
-			return folders[0];
-		}
-	}
-	return null;
-}
-
-function resolveDefaultJetBrainsProjectPath(filePath) {
-	return resolvePhysicalWorkspaceFolderOnly(filePath);
+function defaultProjectConfig(anchorPath) {
+	return {
+		version: 2,
+		anchorPath: anchorPath || '',
+		jetBrainsRootProjectPath: '',
+		slotTargets: defaultSlotTargets(),
+		jumpBackSource: ''
+	};
 }
 
 function readProjectCacheFromDisk(filePath) {
@@ -100,51 +90,30 @@ function readLegacySlotTargets(config) {
 	return Array.isArray(val) ? val : null;
 }
 
-function readJetBrainsRootOverride(filePath) {
-	const config = vscode.workspace.getConfiguration('editorjumper');
-	const legacy = readLegacyString(config, 'jetBrainsRootProjectPath');
-	if (legacy && fs.existsSync(legacy)) {
-		return legacy;
-	}
-	const tentative = resolvePhysicalWorkspaceFolderOnly(filePath);
-	if (!tentative) {
-		const wf = vscode.workspace.workspaceFile;
-		if (wf && wf.scheme === 'file') {
-			const cacheFile = getProjectCacheFilePath(wf.fsPath);
-			const cached = cacheFile ? readProjectCacheFromDisk(cacheFile) : null;
-			if (cached && cached.jetBrainsRootProjectPath && fs.existsSync(cached.jetBrainsRootProjectPath)) {
-				return cached.jetBrainsRootProjectPath;
-			}
-		}
-		return '';
-	}
-	const cacheFile = getProjectCacheFilePath(tentative);
-	const cached = cacheFile ? readProjectCacheFromDisk(cacheFile) : null;
-	if (cached && cached.jetBrainsRootProjectPath && fs.existsSync(cached.jetBrainsRootProjectPath)) {
-		return cached.jetBrainsRootProjectPath;
-	}
-	return '';
-}
-
-function resolveAnchorPath(filePath) {
-	const jetRoot = readJetBrainsRootOverride(filePath);
-	if (jetRoot) {
-		return jetRoot;
-	}
+function tryInheritWorkspaceFileCache(folderAnchorPath) {
 	const wf = vscode.workspace.workspaceFile;
-	if (wf && wf.scheme === 'file' && fs.existsSync(wf.fsPath)) {
-		return wf.fsPath;
+	if (!wf || wf.scheme !== 'file' || !wf.fsPath.endsWith('.code-workspace')) {
+		return null;
 	}
-	const folder = resolvePhysicalWorkspaceFolderOnly(filePath);
-	return folder || null;
+	const wsCacheFile = getProjectCacheFilePath(wf.fsPath);
+	const wsData = wsCacheFile ? readProjectCacheFromDisk(wsCacheFile) : null;
+	if (!wsData) {
+		return null;
+	}
+	return {
+		...defaultProjectConfig(folderAnchorPath),
+		anchorPath: folderAnchorPath,
+		jetBrainsRootProjectPath: wsData.jetBrainsRootProjectPath || '',
+		slotTargets: wsData.slotTargets || defaultSlotTargets(),
+		jumpBackSource: wsData.jumpBackSource || ''
+	};
 }
 
-function migrateFromLegacyWorkspace() {
+function migrateFromLegacyWorkspace(folderAnchorPath) {
 	const config = vscode.workspace.getConfiguration('editorjumper');
 	const slotTargets = readLegacySlotTargets(config);
 	const jetBrainsRoot = readLegacyString(config, 'jetBrainsRootProjectPath');
 	const jumpBackSource = readLegacyString(config, 'jumpBackSource');
-	const anchorPath = resolveAnchorPath();
 	const mergedSlots = defaultSlotTargets();
 	if (Array.isArray(slotTargets) && slotTargets.length >= 3) {
 		for (let i = 0; i < 3; i++) {
@@ -162,12 +131,40 @@ function migrateFromLegacyWorkspace() {
 		mergedSlots[0] = { slot: 1, type: 'jetbrains', target: slot1Target };
 	}
 	return {
-		version: 1,
-		anchorPath: anchorPath ? normalizeAnchorPath(anchorPath) : '',
+		version: 2,
+		anchorPath: folderAnchorPath || '',
 		jetBrainsRootProjectPath: jetBrainsRoot || '',
 		slotTargets: mergedSlots,
 		jumpBackSource: jumpBackSource || ''
 	};
+}
+
+function ensureProjectCache(routeFilePath) {
+	const anchorPath = resolveConfigAnchorPath(routeFilePath);
+	if (!anchorPath) {
+		return migrateFromLegacyWorkspace('');
+	}
+	const cacheFile = getProjectCacheFilePath(anchorPath);
+	let data = cacheFile ? readProjectCacheFromDisk(cacheFile) : null;
+	if (data) {
+		if (!data.version) {
+			data.version = 2;
+		}
+		if (!data.anchorPath) {
+			data.anchorPath = anchorPath;
+		}
+		return data;
+	}
+	data = tryInheritWorkspaceFileCache(anchorPath);
+	if (!data) {
+		data = migrateFromLegacyWorkspace(anchorPath);
+	}
+	data.anchorPath = anchorPath;
+	if (cacheFile) {
+		writeProjectCacheToDisk(cacheFile, data);
+		console.log('projectConfigStore: initialized cache for', anchorPath);
+	}
+	return data;
 }
 
 function importLegacyWorkspaceSettings() {
@@ -183,45 +180,44 @@ function importLegacyWorkspaceSettings() {
 	if (!hasLegacy) {
 		return false;
 	}
-	const anchorPath = resolveAnchorPath();
-	if (!anchorPath) {
+	const folders = listWorkspaceFolderPaths();
+	if (folders.length === 0) {
 		return false;
 	}
-	const data = migrateFromLegacyWorkspace();
-	data.anchorPath = normalizeAnchorPath(anchorPath);
-	const cacheFile = getProjectCacheFilePath(anchorPath);
-	if (cacheFile) {
-		writeProjectCacheToDisk(cacheFile, data);
-		console.log('projectConfigStore: imported legacy workspace settings');
+	const legacyData = migrateFromLegacyWorkspace('');
+	for (const folder of folders) {
+		const anchorPath = normalizeAnchorPath(folder);
+		const cacheFile = getProjectCacheFilePath(anchorPath);
+		if (!cacheFile) {
+			continue;
+		}
+		writeProjectCacheToDisk(cacheFile, {
+			...legacyData,
+			anchorPath
+		});
 	}
+	console.log('projectConfigStore: imported legacy workspace settings');
 	return true;
 }
 
-function readProject(filePath) {
-	const anchorPath = resolveAnchorPath(filePath);
-	if (!anchorPath) {
-		return migrateFromLegacyWorkspace();
-	}
-	const cacheFile = getProjectCacheFilePath(anchorPath);
-	let data = cacheFile ? readProjectCacheFromDisk(cacheFile) : null;
-	if (!data) {
-		data = migrateFromLegacyWorkspace();
-		data.anchorPath = normalizeAnchorPath(anchorPath);
-		if (cacheFile) {
-			writeProjectCacheToDisk(cacheFile, data);
-			console.log('projectConfigStore: migrated from legacy workspace settings');
-		}
-	}
-	return data;
+function readProject(routeFilePath) {
+	return ensureProjectCache(routeFilePath);
 }
 
-function writeProject(patch, filePath) {
-	const current = readProject(filePath);
-	const anchorPath = patch.anchorPath || current.anchorPath || normalizeAnchorPath(resolveAnchorPath(filePath) || '');
+function writeProject(patch, routeFilePath) {
+	const anchorPath = patch.anchorPath
+		? normalizeAnchorPath(patch.anchorPath)
+		: resolveConfigAnchorPath(routeFilePath);
+	if (!anchorPath) {
+		return defaultProjectConfig('');
+	}
+	const current = ensureProjectCache(routeFilePath);
 	const next = {
-		version: 1,
+		version: 2,
 		anchorPath,
-		jetBrainsRootProjectPath: patch.jetBrainsRootProjectPath !== undefined ? patch.jetBrainsRootProjectPath : current.jetBrainsRootProjectPath,
+		jetBrainsRootProjectPath: patch.jetBrainsRootProjectPath !== undefined
+			? patch.jetBrainsRootProjectPath
+			: current.jetBrainsRootProjectPath,
 		slotTargets: patch.slotTargets || current.slotTargets || defaultSlotTargets(),
 		jumpBackSource: patch.jumpBackSource !== undefined ? patch.jumpBackSource : current.jumpBackSource
 	};
@@ -232,33 +228,50 @@ function writeProject(patch, filePath) {
 	return next;
 }
 
-function getSlotTargets(filePath) {
-	const project = readProject(filePath);
+function getSlotTargets(routeFilePath) {
+	const project = readProject(routeFilePath);
 	return project.slotTargets || defaultSlotTargets();
 }
 
-function setSlotTargets(slotTargets, filePath) {
-	return writeProject({ slotTargets }, filePath);
+function setSlotTargets(slotTargets, routeFilePath) {
+	return writeProject({ slotTargets }, routeFilePath);
 }
 
-function getJetBrainsRootProjectPath(filePath) {
-	return readProject(filePath).jetBrainsRootProjectPath || '';
+function getJetBrainsRootProjectPath(routeFilePath) {
+	return readProject(routeFilePath).jetBrainsRootProjectPath || '';
 }
 
-function setJetBrainsRootProjectPath(rootPath, filePath) {
-	return writeProject({ jetBrainsRootProjectPath: rootPath || '' }, filePath);
+function setJetBrainsRootProjectPath(rootPath, routeFilePath, folderAnchorPath) {
+	const anchorPath = folderAnchorPath
+		? normalizeAnchorPath(folderAnchorPath)
+		: resolveConfigAnchorPath(routeFilePath);
+	if (!anchorPath) {
+		return defaultProjectConfig('');
+	}
+	const cacheFile = getProjectCacheFilePath(anchorPath);
+	const current = (cacheFile && readProjectCacheFromDisk(cacheFile)) || defaultProjectConfig(anchorPath);
+	const next = {
+		...current,
+		version: 2,
+		anchorPath,
+		jetBrainsRootProjectPath: rootPath || ''
+	};
+	if (cacheFile) {
+		writeProjectCacheToDisk(cacheFile, next);
+	}
+	return next;
 }
 
-function getJumpBackSource(filePath) {
-	return readProject(filePath).jumpBackSource || '';
+function getJumpBackSource(routeFilePath) {
+	return readProject(routeFilePath).jumpBackSource || '';
 }
 
-function setJumpBackSource(source, filePath) {
-	return writeProject({ jumpBackSource: source || '' }, filePath);
+function setJumpBackSource(source, routeFilePath) {
+	return writeProject({ jumpBackSource: source || '' }, routeFilePath);
 }
 
-function getSlot1Target(filePath) {
-	const slots = getSlotTargets(filePath);
+function getSlot1Target(routeFilePath) {
+	const slots = getSlotTargets(routeFilePath);
 	const slot1 = slots[0];
 	if (slot1 && slot1.type === 'jetbrains' && slot1.target) {
 		return slot1.target;
@@ -266,12 +279,50 @@ function getSlot1Target(filePath) {
 	return 'IDEA';
 }
 
+function resolveJetBrainsProjectPath(routeFilePath) {
+	const configured = getJetBrainsRootProjectPath(routeFilePath);
+	if (configured && fs.existsSync(configured)) {
+		return path.normalize(configured);
+	}
+	const folder = resolvePhysicalWorkspaceFolderOnly(routeFilePath)
+		|| listWorkspaceFolderPaths()[0]
+		|| null;
+	return folder ? path.normalize(folder) : null;
+}
+
+function listFolderRouteConfigs(routeFilePath) {
+	const folders = listWorkspaceFolderPaths();
+	if (folders.length === 0) {
+		const anchorPath = resolveConfigAnchorPath(routeFilePath);
+		if (!anchorPath) {
+			return [];
+		}
+		return [{
+			anchorPath,
+			folderPath: anchorPath,
+			folderName: path.basename(anchorPath),
+			jetBrainsRootProjectPath: getJetBrainsRootProjectPath(routeFilePath)
+		}];
+	}
+	return folders.map((folderPath) => {
+		const anchorPath = normalizeAnchorPath(folderPath);
+		return {
+			anchorPath,
+			folderPath,
+			folderName: path.basename(folderPath),
+			jetBrainsRootProjectPath: getJetBrainsRootProjectPath(folderPath)
+		};
+	});
+}
+
 module.exports = {
 	readProject,
 	writeProject,
-	resolveAnchorPath,
-	resolveDefaultJetBrainsProjectPath,
+	resolveConfigAnchorPath,
+	resolveDefaultJetBrainsProjectPath: resolveJetBrainsProjectPath,
+	resolveJetBrainsProjectPath,
 	resolvePhysicalWorkspaceFolderOnly,
+	listFolderRouteConfigs,
 	getSlotTargets,
 	setSlotTargets,
 	getJetBrainsRootProjectPath,

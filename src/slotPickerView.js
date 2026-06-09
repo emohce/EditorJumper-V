@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const projectConfigStore = require('./projectConfigStore');
+const workspaceRouteUtil = require('./workspaceRouteUtil');
 
 const SLOT_SHORTCUTS = ['Shift+Alt+O / Shift+Alt+P', 'Shift+Alt+I', 'Shift+Alt+U'];
 const SETTINGS_SHORTCUT = process.platform === 'darwin' ? 'Cmd+Shift+Alt+V' : 'Ctrl+Shift+Alt+V';
@@ -142,7 +143,8 @@ class SlotPickerViewProvider {
 		if (!this.view) {
 			return;
 		}
-		const slotTargets = projectConfigStore.getSlotTargets();
+		const routeFilePath = workspaceRouteUtil.resolveRouteFilePath();
+		const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
 		this.view.webview.html = buildSlotPickerHtml(slotTargets);
 	}
 
