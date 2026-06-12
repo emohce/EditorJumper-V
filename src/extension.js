@@ -15,6 +15,7 @@ let configPanel = require('./configPanel');
 
 let statusBarItem;
 let extensionContext;
+let lastConfigPanelAnchorPath = null;
 
 function normalizeSlotMenuTargetName(targetName) {
 	if (!targetName || typeof targetName !== 'string') {
@@ -46,14 +47,25 @@ async function updateSlotMenuContexts(uri) {
 	await vscode.commands.executeCommand('setContext', 'editorjumper.slot3MenuTarget', normalizeSlotMenuTargetName(slot3.target));
 }
 
+async function syncProjectConfigFromCache(routeFilePath) {
+	const rfp = routeFilePath !== undefined ? routeFilePath : currentRouteFilePath();
+	await updateSlotMenuContexts(rfp);
+	updateStatusBar();
+	configPanel.refreshProjectSections(rfp);
+}
+
 function ensureDefaultSlotTargets() {
 	const folders = workspaceRouteUtil.listWorkspaceFolderPaths();
 	const routeTargets = folders.length > 0 ? folders : [null];
 	for (const folder of routeTargets) {
 		const routeFilePath = folder || undefined;
 		const slots = projectConfigStore.getSlotTargets(routeFilePath);
-		let changed = false;
 		const next = [...slots];
+		let changed = false;
+		if (!next[0] || !next[0].target) {
+			next[0] = { slot: 1, type: 'jetbrains', target: 'IDEA' };
+			changed = true;
+		}
 		if (!next[1] || !next[1].target) {
 			next[1] = { slot: 2, type: 'vscode-app', target: 'Cursor' };
 			changed = true;
@@ -62,14 +74,20 @@ function ensureDefaultSlotTargets() {
 			next[2] = { slot: 3, type: 'vscode-app', target: 'Windsurf' };
 			changed = true;
 		}
-		if (!next[0] || !next[0].target) {
-			next[0] = { slot: 1, type: 'jetbrains', target: 'IDEA' };
-			changed = true;
-		}
 		if (changed) {
 			projectConfigStore.setSlotTargets(next, routeFilePath);
 		}
 	}
+}
+
+function onActiveEditorRouteChanged() {
+	const routeFilePath = currentRouteFilePath();
+	const anchorPath = projectConfigStore.resolveConfigAnchorPath(routeFilePath);
+	if (anchorPath === lastConfigPanelAnchorPath) {
+		return;
+	}
+	lastConfigPanelAnchorPath = anchorPath;
+	configPanel.refreshProjectSections(routeFilePath);
 }
 
 function getCurrentVscodeAppName() {
@@ -230,16 +248,6 @@ async function activate(context) {
 
 	updateStatusBar();
 
-	// 注册命令：在JetBrains中打开
-	let openInJetBrainsCommand = vscode.commands.registerCommand('editorjumper.openInJetBrains', async (uri) => {
-		await openInJetBrainsInternal(uri, false);
-	});
-
-	// 注册命令：在JetBrains中打开（快速模式）
-	let openInJetBrainsFastCommand = vscode.commands.registerCommand('editorjumper.openInJetBrainsFast', async (uri) => {
-		await openInJetBrainsInternal(uri, true);
-	});
-
 	/**
 	 * 获取IDE配置信息
 	 * @param {string} ideName IDE名称
@@ -315,8 +323,9 @@ async function activate(context) {
 		let slot1Target = targetOverride || projectConfigStore.getSlot1Target(routeFilePath);
 		let ideConfig = ideConfigurations.find(ide => ide.name === slot1Target);
 
-		// 如果 slot1 未配置，尝试自动检测项目类型
-		if (!ideConfig) {
+		const slotTargetsForDetect = projectConfigStore.getSlotTargets(routeFilePath);
+		const slot1Configured = slotTargetsForDetect[0] && slotTargetsForDetect[0].target && String(slotTargetsForDetect[0].target).trim();
+		if (!ideConfig && !targetOverride && !slot1Configured) {
 			const projectPath = projectConfigStore.resolveJetBrainsProjectPath(routeFilePath);
 			if (projectPath) {
 				const detectedIDE = detectProjectType(projectPath);
@@ -328,7 +337,7 @@ async function activate(context) {
 						const slots = projectConfigStore.getSlotTargets(routeFilePath);
 						slots[0] = { slot: 1, type: 'jetbrains', target: detectedIDE };
 						projectConfigStore.setSlotTargets(slots, routeFilePath);
-						updateStatusBar();
+						syncProjectConfigFromCache(routeFilePath);
 						vscode.window.showInformationMessage(`Auto-detected project type: ${detectedIDE}`);
 					}
 				}
@@ -1094,9 +1103,9 @@ async function activate(context) {
 	/**
 	 * 统一的编辑器打开分发器
 	 */
-	async function openInEditorInternal(uri, type, targetName) {
+	async function openInEditorInternal(uri, type, targetName, fastMode = false) {
 		if (type === 'jetbrains') {
-			await openInJetBrainsInternal(uri, false, targetName || null);
+			await openInJetBrainsInternal(uri, fastMode, targetName || null);
 		} else if (type === 'vscode-app') {
 			await openInVscodeAppInternal(uri, targetName);
 		} else {
@@ -1107,7 +1116,7 @@ async function activate(context) {
 	/**
 	 * 执行 Slot 命令
 	 */
-	async function executeSlot(uri, slotIndex) {
+	async function executeSlot(uri, slotIndex, fastMode = false) {
 		const routeFilePath = currentRouteFilePath(uri);
 		const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
 
@@ -1119,7 +1128,7 @@ async function activate(context) {
 		const slot = slotTargets[slotIndex];
 
 		if (!slot.target && slot.type === 'jetbrains') {
-			await openInJetBrainsInternal(uri, false, projectConfigStore.getSlot1Target(routeFilePath));
+			await openInJetBrainsInternal(uri, fastMode, projectConfigStore.getSlot1Target(routeFilePath));
 			return;
 		}
 
@@ -1128,12 +1137,24 @@ async function activate(context) {
 			return;
 		}
 
-		await openInEditorInternal(uri, slot.type, slot.target);
+		await openInEditorInternal(uri, slot.type, slot.target, fastMode);
 	}
+
+	let openInJetBrainsCommand = vscode.commands.registerCommand('editorjumper.openInJetBrains', async (uri) => {
+		await executeSlot(uri, 0, false);
+	});
+
+	let openInJetBrainsFastCommand = vscode.commands.registerCommand('editorjumper.openInJetBrainsFast', async (uri) => {
+		await executeSlot(uri, 0, true);
+	});
 
 	// 注册 Slot 命令
 	let openSlot1Command = vscode.commands.registerCommand('editorjumper.openSlot1', async (uri) => {
-		await executeSlot(uri, 0);
+		await executeSlot(uri, 0, false);
+	});
+
+	let openSlot1FastCommand = vscode.commands.registerCommand('editorjumper.openSlot1Fast', async (uri) => {
+		await executeSlot(uri, 0, true);
 	});
 
 	let openSlot2Command = vscode.commands.registerCommand('editorjumper.openSlot2', async (uri) => {
@@ -1266,8 +1287,7 @@ async function activate(context) {
 
 		projectConfigStore.setSlotTargets(slotTargets, routeFilePath);
 
-		updateStatusBar();
-		updateSlotMenuContexts();
+		await syncProjectConfigFromCache(routeFilePath);
 		vscode.window.showInformationMessage(`Slot ${selectedSlot.index + 1} → ${selectedEditor.name} (${selectedType.type})`);
 	});
 
@@ -1281,8 +1301,13 @@ async function activate(context) {
 		updateStatusBar();
 	});
 
+	let syncProjectConfigCommand = vscode.commands.registerCommand('editorjumper.syncProjectConfig', async (routeFilePath) => {
+		await syncProjectConfigFromCache(routeFilePath);
+	});
+
 	context.subscriptions.push(openInJetBrainsCommand);
 	context.subscriptions.push(openInJetBrainsFastCommand);
+	context.subscriptions.push(openSlot1FastCommand);
 	context.subscriptions.push(configureIDECommand);
 	context.subscriptions.push(updateStatusBarCommand);
 	context.subscriptions.push(openSlot1Command);
@@ -1299,6 +1324,7 @@ async function activate(context) {
 	context.subscriptions.push(openInPeerVscodeAppCommand);
 	context.subscriptions.push(configureSlotCommand);
 	context.subscriptions.push(pickSlotToJumpCommand);
+	context.subscriptions.push(syncProjectConfigCommand);
 
 	try {
 		await runLegacyConfigMigration();
@@ -1322,10 +1348,16 @@ async function activate(context) {
 		globalConfigStore.watchSharedApps(() => {
 			updateStatusBar();
 			updateSlotMenuContexts();
-			configPanel.refreshConfigurationPanel();
+			configPanel.refreshGlobalSections();
 		});
 		context.subscriptions.push({ dispose: () => globalConfigStore.disposeWatcher() });
 
+		projectConfigStore.watchProjectCache(() => {
+			syncProjectConfigFromCache();
+		});
+		context.subscriptions.push({ dispose: () => projectConfigStore.disposeProjectWatcher() });
+
+		lastConfigPanelAnchorPath = projectConfigStore.resolveConfigAnchorPath(currentRouteFilePath());
 		updateStatusBar();
 	} catch (error) {
 		console.error('EzEditorJumper-V activate init failed:', error);
@@ -1338,13 +1370,14 @@ async function activate(context) {
 			updateStatusBar();
 			updateSlotMenuContexts();
 			// 自动刷新配置面板（如果已打开）
-			configPanel.refreshConfigurationPanel();
+			configPanel.refreshGlobalSections();
 		}
 	}));
 
 	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
 		updateStatusBar();
 		updateSlotMenuContexts();
+		onActiveEditorRouteChanged();
 	}));
 
 	updateSlotMenuContexts();
@@ -1375,6 +1408,7 @@ function deactivate() {
 		statusBarItem.dispose();
 	}
 	globalConfigStore.disposeWatcher();
+	projectConfigStore.disposeProjectWatcher();
 }
 
 module.exports = {

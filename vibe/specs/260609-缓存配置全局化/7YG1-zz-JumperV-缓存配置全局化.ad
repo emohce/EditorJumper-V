@@ -1,11 +1,13 @@
 = 缓存配置全局化 [[缓存配置全局化-7YG1-JumperV]]
 
-* [ ] Slot和默认启动配置移除
+* [x] Slot和默认启动配置移除
 ** 完全移除默认启动的配置, 只保留3个slot, 且以slot1为默认启动底部状态栏展示
 *** slot1默认为Idea, 用户更改后要体现在底部状态栏
 *** slot2默认为Cursor
 *** slot3默认为Windsurf(Windsurf/Devin路径在shared-apps中手动配置一次, 两插件同步)
-* [ ] 全局缓存
+*** Slot 下拉变更即写入 OS project cache（`*_jumper-v.json`）；配置页、bottom picker、快捷键同源读 cache
+*** `Shift+Alt+O/P` 走 `executeSlot(0)`；`watchProjectCache` 跨 VS-IDE 实例同步 project cache
+* [x] 全局缓存
 ** EzEditorJumperV 项目级配置: work-space/project的 file-path 进行唯一code生成, 作为配置主键
 *** 使用全局配置保存, 以配置主键作为缓存key
 *** 全局配置不保存在工作区配置中, 而保存到mac/win对应合适的缓存目录

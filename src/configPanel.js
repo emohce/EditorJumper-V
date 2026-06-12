@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const os = require('os');
 const fs = require('fs');
+const path = require('path');
 const globalConfigStore = require('./globalConfigStore');
 const projectConfigStore = require('./projectConfigStore');
 const workspaceRouteUtil = require('./workspaceRouteUtil');
@@ -10,24 +11,221 @@ const { validateRootProjectPath, getRootProjectOpenDialogOptions } = require('./
 
 let configPanel = undefined;
 
+function resolvePanelRouteFilePath(routeFilePath) {
+    return routeFilePath !== undefined && routeFilePath !== null
+        ? routeFilePath
+        : workspaceRouteUtil.resolveRouteFilePath();
+}
+
 /**
- * 刷新配置面板（如果面板已打开）
+ * 刷新全局工具配置区块（不影响 project slot / 根路径）
  */
 function refreshConfigurationPanel() {
-    if (configPanel) {
-        const config = vscode.workspace.getConfiguration('editorjumper');
-        const collapsedSections = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-        configPanel.webview.html = getWebviewContent(globalConfigStore.getIdeConfigurations(), collapsedSections);
-    }
+    refreshGlobalSections();
+}
+
+function reloadGlobalPanelHtml() {
+    refreshGlobalSections();
 }
 
 function reloadPanelHtml() {
+    reloadGlobalPanelHtml();
+}
+
+function buildProjectAnchorBannerHtml(routeFilePath) {
+    const anchorPath = projectConfigStore.resolveConfigAnchorPath(routeFilePath);
+    const folderPath = anchorPath || '';
+    const folderName = folderPath ? path.basename(folderPath) : 'workspace';
+    return `<div id="project-anchor-banner" class="note" style="margin-bottom: 12px;">Current project cache anchor: <strong>${escapeHtml(folderName)}</strong> — ${escapeHtml(folderPath || '(none)')}</div>`;
+}
+
+function buildSlotListInnerHtml(routeFilePath, ideConfigurations) {
+    const slotTargets = projectConfigStore.readProjectFresh(routeFilePath).slotTargets
+        || projectConfigStore.defaultSlotTargets();
+    const vscodeAppConfigurations = globalConfigStore.getVscodeAppConfigurations();
+    const slotShortcuts = ['Shift+Alt+O / Shift+Alt+P', 'Shift+Alt+I', 'Shift+Alt+U'];
+    const jetbrainsOptions = ideConfigurations.filter(ide => !ide.hidden).map(ide => ide.name);
+    const vscodeAppOptions = vscodeAppConfigurations.filter(app => !app.hidden).map(app => app.name);
+
+    return slotTargets.map((slot, idx) => {
+        const options = slot.type === 'jetbrains' ? jetbrainsOptions : vscodeAppOptions;
+        const optionHtml = options.map(name => `<option value="${escapeHtml(name)}" ${slot.target === name ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('');
+
+        return `
+                <div class="ide-item">
+                    <div class="ide-info">
+                        <div>
+                            <strong>Slot ${slot.slot}</strong>
+                            <span class="slot-shortcut">${escapeHtml(slotShortcuts[idx] || '')}</span>
+                            <span id="slotSaved-${idx}" class="slot-saved-indicator"></span>
+                        </div>
+                    </div>
+                    <div class="ide-controls" style="gap: 6px;">
+                        <select id="slotType-${idx}" style="padding: 4px;">
+                            <option value="jetbrains" ${slot.type === 'jetbrains' ? 'selected' : ''}>JetBrains</option>
+                            <option value="vscode-app" ${slot.type === 'vscode-app' ? 'selected' : ''}>VSCode App</option>
+                        </select>
+                        <select id="slotTarget-${idx}" style="padding: 4px; min-width: 140px;">
+                            ${!slot.target ? '<option value="" selected>(not set)</option>' : ''}
+                            ${optionHtml}
+                        </select>
+                    </div>
+                </div>
+            `;
+    }).join('');
+}
+
+function buildFolderRoutesInnerHtml(routeFilePath) {
+    const folderRoutes = projectConfigStore.listFolderRouteConfigs(routeFilePath);
+    return folderRoutes.map((route, idx) => `
+            <div class="folder-route" style="margin-bottom: 12px; padding: 8px; border: 1px solid var(--vscode-input-border); border-radius: 4px;">
+                <label><strong>${escapeHtml(route.folderName)}</strong></label>
+                <div class="note" style="margin: 4px 0 8px;">${escapeHtml(route.folderPath)}</div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="text" id="rootProjectPath-${idx}" data-anchor="${escapeHtml(route.anchorPath)}" class="root-project-input" style="flex: 1;" value="${escapeHtml(route.jetBrainsRootProjectPath || '')}" placeholder="Folder or project file (e.g. .sln/.ipr/.iml)">
+                    <button onclick="selectPathForRootProject(${idx})">浏览路径</button>
+                </div>
+            </div>
+        `).join('');
+}
+
+function buildProjectSectionsPayload(routeFilePath) {
+    const ideConfigurations = globalConfigStore.getIdeConfigurations();
+    return {
+        anchorBannerHtml: buildProjectAnchorBannerHtml(routeFilePath),
+        slotListHtml: buildSlotListInnerHtml(routeFilePath, ideConfigurations),
+        folderRoutesHtml: buildFolderRoutesInnerHtml(routeFilePath),
+        jetbrainsOptions: ideConfigurations.filter(ide => !ide.hidden).map(ide => ide.name),
+        vscodeAppOptions: globalConfigStore.getVscodeAppConfigurations().filter(app => !app.hidden).map(app => app.name)
+    };
+}
+
+function refreshProjectSections(routeFilePath) {
     if (!configPanel) {
         return;
     }
-    const config = vscode.workspace.getConfiguration('editorjumper');
-    const collapsedSections = config.get('collapsedSections') || { 'jetbrains-section': true, 'vscode-section': true };
-    configPanel.webview.html = getWebviewContent(globalConfigStore.getIdeConfigurations(), collapsedSections);
+    const rfp = resolvePanelRouteFilePath(routeFilePath);
+    configPanel.webview.postMessage({
+        command: 'refreshProjectSections',
+        ...buildProjectSectionsPayload(rfp)
+    });
+}
+
+function buildIdeItemsHtml(ideConfigurations, slot1Target) {
+    return ideConfigurations.map(ide => {
+        const safeName = escapeHtml(ide.name);
+        const rowId = encodeDomId('ide', ide.name);
+        const hiddenId = encodeDomId('hidden', ide.name);
+        const nameArg = JSON.stringify(ide.name);
+
+        return `
+                    <div id="${rowId}" class="ide-item ${ide.hidden ? 'hidden-ide' : ''}">
+                        <div class="ide-info">
+                            <div>
+                                <strong>${safeName}</strong>
+                                ${ide.isCustom ? ' (Custom)' : ''}
+                            </div>
+                        </div>
+                        <div class="ide-controls">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="${hiddenId}"
+                                    ${ide.hidden ? 'checked' : ''}
+                                    onchange='toggleHidden(${nameArg}, ${JSON.stringify(hiddenId)})'>
+                                <label for="${hiddenId}">Hidden</label>
+                            </div>
+                            <button onclick='editIDE(${nameArg})'>Edit</button>
+                            ${ide.isCustom ? `
+                                <button onclick='removeIDE(${nameArg})'
+                                    ${ide.name === slot1Target ? 'disabled title="Cannot remove Slot 1 IDE"' : ''}>
+                                    Remove
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+    }).join('');
+}
+
+function buildVscodeAppItemsHtml(vscodeAppConfigurations) {
+    return vscodeAppConfigurations.map(app => {
+        const safeName = escapeHtml(app.name);
+        const hiddenId = encodeDomId('vscapp-hidden', app.name);
+        const nameArg = JSON.stringify(app.name);
+
+        return `
+                    <div class="ide-item ${app.hidden ? 'hidden-ide' : ''}">
+                        <div class="ide-info">
+                            <div>
+                                <strong>${safeName}</strong>
+                                ${app.isCustom ? ' (Custom)' : ''}
+                            </div>
+                        </div>
+                        <div class="ide-controls">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="${hiddenId}"
+                                    ${app.hidden ? 'checked' : ''}
+                                    onchange='toggleVscodeAppHidden(${nameArg}, ${JSON.stringify(hiddenId)})'>
+                                <label for="${hiddenId}">Hidden</label>
+                            </div>
+                            <button onclick='editVscodeApp(${nameArg})'>Edit</button>
+                            ${app.isCustom ? `<button onclick='removeVscodeApp(${nameArg})'>Remove</button>` : ''}
+                        </div>
+                    </div>
+                `;
+    }).join('');
+}
+
+function refreshGlobalSections() {
+    if (!configPanel) {
+        return;
+    }
+    const ideConfigurations = globalConfigStore.getIdeConfigurations();
+    const vscodeAppConfigurations = globalConfigStore.getVscodeAppConfigurations();
+    const routeFilePath = workspaceRouteUtil.resolveRouteFilePath();
+    const slot1Target = projectConfigStore.getSlot1Target(routeFilePath);
+    configPanel.webview.postMessage({
+        command: 'refreshGlobalSections',
+        ideItemsHtml: buildIdeItemsHtml(ideConfigurations, slot1Target),
+        vscodeAppItemsHtml: buildVscodeAppItemsHtml(vscodeAppConfigurations),
+        ideConfigurations,
+        vscodeAppConfigurations,
+        slot1Target
+    });
+}
+
+async function syncSlotRuntime(routeFilePath) {
+    await vscode.commands.executeCommand('editorjumper.syncProjectConfig', routeFilePath);
+}
+
+function handleUpdateSlot(message, routeFilePath) {
+    const slotTargets = projectConfigStore.readProjectFresh(routeFilePath).slotTargets
+        || projectConfigStore.defaultSlotTargets();
+    const mergedSlotTargets = [
+        slotTargets[0] || { slot: 1, type: 'jetbrains', target: '' },
+        slotTargets[1] || { slot: 2, type: 'vscode-app', target: '' },
+        slotTargets[2] || { slot: 3, type: 'vscode-app', target: '' }
+    ];
+    const slotIdx = message.slotIndex;
+    if (slotIdx < 0 || slotIdx >= mergedSlotTargets.length) {
+        return;
+    }
+    const slotTarget = message.slotTarget || '';
+    if (!slotTarget) {
+        return;
+    }
+    mergedSlotTargets[slotIdx] = {
+        slot: slotIdx + 1,
+        type: message.slotType,
+        target: slotTarget
+    };
+    projectConfigStore.setSlotTargets(mergedSlotTargets, routeFilePath);
+    syncSlotRuntime(routeFilePath);
+    if (configPanel) {
+        configPanel.webview.postMessage({
+            command: 'slotSaved',
+            slotIndex: slotIdx
+        });
+    }
 }
 
 function escapeHtml(value) {
@@ -108,7 +306,7 @@ function createConfigurationPanel(context) {
                         globalConfigStore.upsertApp('jetbrains', updatedIDE);
                         
                         vscode.window.showInformationMessage(`IDE configuration saved: ${newIDE.name}`);
-                        reloadPanelHtml();
+                        reloadGlobalPanelHtml();
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -130,9 +328,11 @@ function createConfigurationPanel(context) {
                                 const slots = projectConfigStore.getSlotTargets(routeFilePath);
                                 slots[0] = { slot: 1, type: 'jetbrains', target: firstVisibleIDE.name };
                                 projectConfigStore.setSlotTargets(slots, routeFilePath);
+                                syncSlotRuntime(routeFilePath);
+                                refreshProjectSections(routeFilePath);
                             }
                         }
-                        reloadPanelHtml();
+                        reloadGlobalPanelHtml();
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -145,7 +345,7 @@ function createConfigurationPanel(context) {
                         }
                         globalConfigStore.removeApp('jetbrains', message.ideName);
                         vscode.window.showInformationMessage('IDE configuration removed');
-                        reloadPanelHtml();
+                        reloadGlobalPanelHtml();
                         // 通知主模块更新状态栏
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
@@ -189,6 +389,7 @@ function createConfigurationPanel(context) {
                                 routeFilePath,
                                 message.folderAnchor
                             );
+                            refreshProjectSections(routeFilePath);
                             configPanel.webview.postMessage({
                                 command: 'setRootProjectPath',
                                 path: selectedRootPath,
@@ -208,35 +409,10 @@ function createConfigurationPanel(context) {
                             routeFilePath,
                             message.folderAnchor
                         );
-                        vscode.window.showInformationMessage('JetBrains root project path saved.');
-                        reloadPanelHtml();
+                        refreshProjectSections(routeFilePath);
                         break;
                     case 'updateSlot':
-                        const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
-                        const mergedSlotTargets = [
-                            slotTargets[0] || { slot: 1, type: 'jetbrains', target: '' },
-                            slotTargets[1] || { slot: 2, type: 'vscode-app', target: 'Cursor' },
-                            slotTargets[2] || { slot: 3, type: 'vscode-app', target: 'Windsurf' }
-                        ];
-                        const slotIdx = message.slotIndex;
-                        if (slotIdx >= 0 && slotIdx < mergedSlotTargets.length) {
-                            let slotTarget = message.slotTarget;
-                            if (slotIdx === 1 && !slotTarget) {
-                                slotTarget = 'Cursor';
-                            }
-                            if (slotIdx === 2 && !slotTarget) {
-                                slotTarget = 'Windsurf';
-                            }
-                            mergedSlotTargets[slotIdx] = {
-                                slot: slotIdx + 1,
-                                type: message.slotType,
-                                target: slotTarget
-                            };
-                            projectConfigStore.setSlotTargets(mergedSlotTargets, routeFilePath);
-                            vscode.window.showInformationMessage(`Slot ${slotIdx + 1} → ${message.slotTarget} (${message.slotType}) - saved for this project`);
-                        }
-                        reloadPanelHtml();
-                        vscode.commands.executeCommand('editorjumper.updateStatusBar');
+                        handleUpdateSlot(message, routeFilePath);
                         break;
 
                     case 'addVscodeApp':
@@ -247,7 +423,7 @@ function createConfigurationPanel(context) {
                             hidden: newApp.hidden === true
                         });
                         vscode.window.showInformationMessage(`VSCode app configuration saved: ${newApp.name}`);
-                        reloadPanelHtml();
+                        reloadGlobalPanelHtml();
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
@@ -262,14 +438,14 @@ function createConfigurationPanel(context) {
                             } : a
                         );
                         globalConfigStore.replaceVscodeAppConfigurations(updatedVscodeApps);
-                        reloadPanelHtml();
+                        reloadGlobalPanelHtml();
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
                     case 'removeVscodeApp':
                         globalConfigStore.removeApp('vscode', message.appName);
                         vscode.window.showInformationMessage('VSCode app configuration removed');
-                        reloadPanelHtml();
+                        reloadGlobalPanelHtml();
                         vscode.commands.executeCommand('editorjumper.updateStatusBar');
                         break;
 
@@ -339,111 +515,15 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
     // 是否是macOS平台
     const isMac = platform === 'darwin';
 
-    const folderRoutes = projectConfigStore.listFolderRouteConfigs(routeFilePath);
-    const folderRoutesHtml = folderRoutes.map((route, idx) => `
-            <div class="folder-route" style="margin-bottom: 12px; padding: 8px; border: 1px solid var(--vscode-input-border); border-radius: 4px;">
-                <label><strong>${escapeHtml(route.folderName)}</strong></label>
-                <div class="note" style="margin: 4px 0 8px;">${escapeHtml(route.folderPath)}</div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <input type="text" id="rootProjectPath-${idx}" data-anchor="${escapeHtml(route.anchorPath)}" style="flex: 1;" value="${escapeHtml(route.jetBrainsRootProjectPath || '')}" placeholder="Folder or project file (e.g. .sln/.ipr/.iml)">
-                    <button onclick="selectPathForRootProject(${idx})">浏览路径</button>
-                    <button onclick="saveRootProjectPath(${idx})">Save</button>
-                </div>
-            </div>
-        `).join('');
-
-    // Slot 和 VSCode App 数据
-    const slotTargets = projectConfigStore.getSlotTargets(routeFilePath);
     const vscodeAppConfigurations = globalConfigStore.getVscodeAppConfigurations();
-    const slotShortcuts = ['Shift+Alt+O / Shift+Alt+P', 'Shift+Alt+I', 'Shift+Alt+U'];
-
-    // 构建所有可选编辑器列表（用于 Slot 下拉框）
-    const jetbrainsOptions = ideConfigurations.filter(ide => !ide.hidden).map(ide => ide.name);
-    const vscodeAppOptions = vscodeAppConfigurations.filter(app => !app.hidden).map(app => app.name);
-    const slotItemsHtml = slotTargets.map((slot, idx) => {
-        const options = slot.type === 'jetbrains' ? jetbrainsOptions : vscodeAppOptions;
-        const optionHtml = options.map(name => `<option value="${escapeHtml(name)}" ${slot.target === name ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('');
-
-        return `
-                <div class="ide-item">
-                    <div class="ide-info">
-                        <div>
-                            <strong>Slot ${slot.slot}</strong>
-                            <span class="slot-shortcut">${escapeHtml(slotShortcuts[idx] || '')}</span>
-                        </div>
-                    </div>
-                    <div class="ide-controls" style="gap: 6px;">
-                        <select id="slotType-${idx}" onchange="onSlotTypeChange(${idx})" style="padding: 4px;">
-                            <option value="jetbrains" ${slot.type === 'jetbrains' ? 'selected' : ''}>JetBrains</option>
-                            <option value="vscode-app" ${slot.type === 'vscode-app' ? 'selected' : ''}>VSCode App</option>
-                        </select>
-                        <select id="slotTarget-${idx}" style="padding: 4px; min-width: 140px;">
-                            ${!slot.target ? '<option value="" selected>(not set)</option>' : ''}
-                            ${optionHtml}
-                        </select>
-                        <button onclick="saveSlot(${idx})">Save</button>
-                    </div>
-                </div>
-            `;
-    }).join('');
-    const ideItemsHtml = ideConfigurations.map(ide => {
-        const safeName = escapeHtml(ide.name);
-        const rowId = encodeDomId('ide', ide.name);
-        const hiddenId = encodeDomId('hidden', ide.name);
-        const nameArg = JSON.stringify(ide.name);
-
-        return `
-                    <div id="${rowId}" class="ide-item ${ide.hidden ? 'hidden-ide' : ''}">
-                        <div class="ide-info">
-                            <div>
-                                <strong>${safeName}</strong>
-                                ${ide.isCustom ? ' (Custom)' : ''}
-                            </div>
-                        </div>
-                        <div class="ide-controls">
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="${hiddenId}"
-                                    ${ide.hidden ? 'checked' : ''}
-                                    onchange='toggleHidden(${nameArg}, ${JSON.stringify(hiddenId)})'>
-                                <label for="${hiddenId}">Hidden</label>
-                            </div>
-                            <button onclick='editIDE(${nameArg})'>Edit</button>
-                            ${ide.isCustom ? `
-                                <button onclick='removeIDE(${nameArg})'
-                                    ${ide.name === slot1Target ? 'disabled title="Cannot remove Slot 1 IDE"' : ''}>
-                                    Remove
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-    }).join('');
-    const vscodeAppItemsHtml = vscodeAppConfigurations.map(app => {
-        const safeName = escapeHtml(app.name);
-        const hiddenId = encodeDomId('vscapp-hidden', app.name);
-        const nameArg = JSON.stringify(app.name);
-
-        return `
-                    <div class="ide-item ${app.hidden ? 'hidden-ide' : ''}">
-                        <div class="ide-info">
-                            <div>
-                                <strong>${safeName}</strong>
-                                ${app.isCustom ? ' (Custom)' : ''}
-                            </div>
-                        </div>
-                        <div class="ide-controls">
-                            <div class="checkbox-group">
-                                <input type="checkbox" id="${hiddenId}"
-                                    ${app.hidden ? 'checked' : ''}
-                                    onchange='toggleVscodeAppHidden(${nameArg}, ${JSON.stringify(hiddenId)})'>
-                                <label for="${hiddenId}">Hidden</label>
-                            </div>
-                            <button onclick='editVscodeApp(${nameArg})'>Edit</button>
-                            ${app.isCustom ? `<button onclick='removeVscodeApp(${nameArg})'>Remove</button>` : ''}
-                        </div>
-                    </div>
-                `;
-    }).join('');
+    const projectPayload = buildProjectSectionsPayload(routeFilePath);
+    const slotItemsHtml = projectPayload.slotListHtml;
+    const folderRoutesHtml = projectPayload.folderRoutesHtml;
+    const anchorBannerHtml = projectPayload.anchorBannerHtml;
+    const jetbrainsOptions = projectPayload.jetbrainsOptions;
+    const vscodeAppOptions = projectPayload.vscodeAppOptions;
+    const ideItemsHtml = buildIdeItemsHtml(ideConfigurations, slot1Target);
+    const vscodeAppItemsHtml = buildVscodeAppItemsHtml(vscodeAppConfigurations);
 
     return `<!DOCTYPE html>
     <html>
@@ -568,23 +648,33 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 color: var(--vscode-descriptionForeground);
                 margin-left: 8px;
             }
+            .slot-saved-indicator {
+                color: var(--vscode-terminal-ansiGreen);
+                margin-left: 6px;
+                font-size: 0.85em;
+            }
         </style>
     </head>
     <body>
         <h2>Ez-EditorJumper-V Configurations</h2>
 
         <!-- ========== Shortcut Slots (Primary Section) ========== -->
+        <div id="project-slots-section">
         <h2>Shortcut Slots</h2>
-        <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. Slots below apply to the sub-project of the currently focused editor (or the first workspace folder when no editor is open).</div>
-        <div class="slot-list">
+        <div class="note" style="margin-bottom: 16px;">Each slot is bound to a keyboard shortcut. Slots below apply to the sub-project of the currently focused editor (or the first workspace folder when no editor is open). Changes are saved automatically to OS cache.</div>
+        ${anchorBannerHtml}
+        <div class="slot-list" id="project-slot-list">
             ${slotItemsHtml}
+        </div>
         </div>
 
         <!-- ========== JetBrains Root Project Path (per workspace folder) ========== -->
-        <div class="form-group command-group" style="margin-bottom: 16px; margin-top: 20px;">
+        <div id="project-rootpaths-section" class="form-group command-group" style="margin-bottom: 16px; margin-top: 20px;">
             <label>JetBrains 根项目路径（按工作区子项目）:</label>
             <div class="note" style="margin: 6px 0 10px;">每个 workspace 子项目可单独配置 Rider .sln、IDEA 目录等；留空则跳转时使用该子项目文件夹。配置保存在 OS 全局缓存，VS-IDE 间共用。跳转时以当前聚焦编辑器所在子项目为准。</div>
+            <div id="project-folder-routes">
             ${folderRoutesHtml}
+            </div>
         </div>
 
         <hr style="margin: 30px 0;">
@@ -601,7 +691,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             <div class="action-buttons">
                 <button onclick="showAddForm()">Add New IDE</button>
             </div>
-            <div class="ide-list">
+            <div class="ide-list" id="jetbrains-ide-list">
                 ${ideItemsHtml}
             </div>
         </div>
@@ -654,7 +744,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             <div class="action-buttons">
                 <button onclick="showAddVscodeAppForm()">Add New Editor</button>
             </div>
-            <div class="ide-list">
+            <div class="ide-list" id="vscode-app-list">
                 ${vscodeAppItemsHtml}
             </div>
         </div>
@@ -693,8 +783,8 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 console.error('Failed to acquire VS Code API:', error);
                 alert('Failed to initialize VS Code API. Please reload the window.');
             }
-            const configurations = ${JSON.stringify(ideConfigurations)};
-            const slot1Target = ${JSON.stringify(slot1Target)};
+            let configurations = ${JSON.stringify(ideConfigurations)};
+            let slot1Target = ${JSON.stringify(slot1Target)};
             const platform = '${platform}';
             const commandLabel = '${commandLabel}';
             const isMac = ${isMac};
@@ -952,21 +1042,10 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 vscode.postMessage({ command: 'selectPathForRootProject', folderAnchor: folderAnchor });
             }
 
-            function saveRootProjectPath(idx) {
-                if (!vscode) {
-                    alert('VS Code API not initialized. Please reload the window.');
-                    return;
-                }
-                const el = document.getElementById('rootProjectPath-' + idx);
-                const path = el ? el.value : '';
-                const folderAnchor = el ? el.getAttribute('data-anchor') : '';
-                vscode.postMessage({ command: 'saveRootProjectPath', path: path, folderAnchor: folderAnchor });
-            }
-
-            // ========== Slot 相关函数 ==========
-            const jetbrainsOptions = ${JSON.stringify(jetbrainsOptions)};
-            const vscodeAppOptions = ${JSON.stringify(vscodeAppOptions)};
-            const slotTargetsData = ${JSON.stringify(slotTargets)};
+            // ========== Slot / root path（cache 驱动）==========
+            let jetbrainsOptions = ${JSON.stringify(jetbrainsOptions)};
+            let vscodeAppOptions = ${JSON.stringify(vscodeAppOptions)};
+            const rootSaveTimers = {};
 
             function onSlotTypeChange(idx) {
                 const typeSelect = document.getElementById('slotType-' + idx);
@@ -982,10 +1061,11 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 targetSelect.value = options.includes(currentValue) ? currentValue : '';
             }
 
-            function saveSlot(idx) {
+            function autoSaveSlot(idx) {
                 const typeSelect = document.getElementById('slotType-' + idx);
                 const targetSelect = document.getElementById('slotTarget-' + idx);
-                if (!typeSelect || !targetSelect) return;
+                if (!typeSelect || !targetSelect || !vscode) return;
+                if (!targetSelect.value) return;
 
                 vscode.postMessage({
                     command: 'updateSlot',
@@ -995,8 +1075,89 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 });
             }
 
+            function onRootProjectInput(e) {
+                const el = e.target;
+                const folderAnchor = el ? el.getAttribute('data-anchor') : '';
+                if (!folderAnchor || !vscode) return;
+                clearTimeout(rootSaveTimers[folderAnchor]);
+                rootSaveTimers[folderAnchor] = setTimeout(() => {
+                    vscode.postMessage({
+                        command: 'saveRootProjectPath',
+                        path: el.value,
+                        folderAnchor: folderAnchor
+                    });
+                }, 500);
+            }
+
+            function bindProjectSectionEvents() {
+                document.querySelectorAll('.root-project-input').forEach((input) => {
+                    input.removeEventListener('input', onRootProjectInput);
+                    input.addEventListener('input', onRootProjectInput);
+                });
+                const slotListEl = document.getElementById('project-slot-list');
+                if (slotListEl && !slotListEl.dataset.slotBound) {
+                    slotListEl.dataset.slotBound = '1';
+                    slotListEl.addEventListener('change', (e) => {
+                        const t = e.target;
+                        if (!t || !t.id) return;
+                        if (t.id.startsWith('slotType-')) {
+                            const idx = parseInt(t.id.slice('slotType-'.length), 10);
+                            onSlotTypeChange(idx);
+                            autoSaveSlot(idx);
+                        } else if (t.id.startsWith('slotTarget-')) {
+                            const idx = parseInt(t.id.slice('slotTarget-'.length), 10);
+                            autoSaveSlot(idx);
+                        }
+                    });
+                }
+            }
+
+            function applyProjectSections(message) {
+                if (message.anchorBannerHtml) {
+                    const existing = document.getElementById('project-anchor-banner');
+                    if (existing) {
+                        existing.outerHTML = message.anchorBannerHtml;
+                    }
+                }
+                const slotList = document.getElementById('project-slot-list');
+                if (slotList && message.slotListHtml) {
+                    slotList.innerHTML = message.slotListHtml;
+                }
+                const folderRoutes = document.getElementById('project-folder-routes');
+                if (folderRoutes && message.folderRoutesHtml) {
+                    folderRoutes.innerHTML = message.folderRoutesHtml;
+                }
+                if (Array.isArray(message.jetbrainsOptions)) {
+                    jetbrainsOptions = message.jetbrainsOptions;
+                }
+                if (Array.isArray(message.vscodeAppOptions)) {
+                    vscodeAppOptions = message.vscodeAppOptions;
+                }
+                bindProjectSectionEvents();
+            }
+
+            function applyGlobalSections(message) {
+                const ideList = document.getElementById('jetbrains-ide-list');
+                if (ideList && message.ideItemsHtml) {
+                    ideList.innerHTML = message.ideItemsHtml;
+                }
+                const vscodeList = document.getElementById('vscode-app-list');
+                if (vscodeList && message.vscodeAppItemsHtml) {
+                    vscodeList.innerHTML = message.vscodeAppItemsHtml;
+                }
+                if (Array.isArray(message.ideConfigurations)) {
+                    configurations = message.ideConfigurations;
+                }
+                if (Array.isArray(message.vscodeAppConfigurations)) {
+                    vscodeAppConfigurations = message.vscodeAppConfigurations;
+                }
+                if (message.slot1Target !== undefined) {
+                    slot1Target = message.slot1Target;
+                }
+            }
+
             // ========== VSCode App 相关函数 ==========
-            const vscodeAppConfigurations = ${JSON.stringify(vscodeAppConfigurations)};
+            let vscodeAppConfigurations = ${JSON.stringify(vscodeAppConfigurations)};
             let currentEditingVscodeApp = '';
 
             function showAddVscodeAppForm() {
@@ -1120,8 +1281,24 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                         const appCmdEl = document.getElementById('vscodeAppCommand');
                         if (appCmdEl) appCmdEl.value = message.path;
                         break;
+                    case 'refreshProjectSections':
+                        applyProjectSections(message);
+                        break;
+                    case 'refreshGlobalSections':
+                        applyGlobalSections(message);
+                        break;
+                    case 'slotSaved': {
+                        const indicator = document.getElementById('slotSaved-' + message.slotIndex);
+                        if (indicator) {
+                            indicator.textContent = 'saved';
+                            setTimeout(() => { indicator.textContent = ''; }, 1500);
+                        }
+                        break;
+                    }
                 }
             });
+
+            bindProjectSectionEvents();
 
             function domId(prefix, value) {
                 return prefix + '-' + btoa(unescape(encodeURIComponent(String(value || ''))))
@@ -1160,5 +1337,7 @@ function highlightIDE(ideName) {
 module.exports = {
     createConfigurationPanel,
     highlightIDE,
-    refreshConfigurationPanel
+    refreshConfigurationPanel,
+    refreshProjectSections,
+    refreshGlobalSections
 }; 

@@ -11,6 +11,8 @@ const {
 } = require('./workspaceRouteUtil');
 
 const PLUGIN_SUFFIX = 'jumper-v';
+let projectWatcher = null;
+let projectChangeListeners = [];
 
 function defaultSlotTargets() {
 	return [
@@ -204,6 +206,34 @@ function readProject(routeFilePath) {
 	return ensureProjectCache(routeFilePath);
 }
 
+function readProjectFresh(routeFilePath) {
+	const anchorPath = resolveConfigAnchorPath(routeFilePath);
+	if (!anchorPath) {
+		return migrateFromLegacyWorkspace('');
+	}
+	const cacheFile = getProjectCacheFilePath(anchorPath);
+	const data = cacheFile ? readProjectCacheFromDisk(cacheFile) : null;
+	if (data) {
+		if (!data.version) {
+			data.version = 2;
+		}
+		if (!data.anchorPath) {
+			data.anchorPath = anchorPath;
+		}
+		return data;
+	}
+	return ensureProjectCache(routeFilePath);
+}
+
+function projectCacheFileExists(routeFilePath) {
+	const anchorPath = resolveConfigAnchorPath(routeFilePath);
+	if (!anchorPath) {
+		return false;
+	}
+	const cacheFile = getProjectCacheFilePath(anchorPath);
+	return !!(cacheFile && fs.existsSync(cacheFile));
+}
+
 function writeProject(patch, routeFilePath) {
 	const anchorPath = patch.anchorPath
 		? normalizeAnchorPath(patch.anchorPath)
@@ -290,6 +320,46 @@ function resolveJetBrainsProjectPath(routeFilePath) {
 	return folder ? path.normalize(folder) : null;
 }
 
+function notifyProjectChangeListeners() {
+	projectChangeListeners.forEach((fn) => {
+		try {
+			fn();
+		} catch (e) {
+			console.warn('projectConfigStore listener error:', e.message);
+		}
+	});
+}
+
+function watchProjectCache(onChange) {
+	if (onChange) {
+		projectChangeListeners.push(onChange);
+	}
+	if (projectWatcher) {
+		return;
+	}
+	const dir = getCacheRootDir();
+	if (!fs.existsSync(dir)) {
+		fs.mkdirSync(dir, { recursive: true });
+	}
+	try {
+		projectWatcher = fs.watch(dir, (eventType, filename) => {
+			if (filename && String(filename).includes(`_${PLUGIN_SUFFIX}.json`)) {
+				notifyProjectChangeListeners();
+			}
+		});
+	} catch (e) {
+		console.warn('projectConfigStore: fs.watch failed', e.message);
+	}
+}
+
+function disposeProjectWatcher() {
+	if (projectWatcher) {
+		projectWatcher.close();
+		projectWatcher = null;
+	}
+	projectChangeListeners = [];
+}
+
 function listFolderRouteConfigs(routeFilePath) {
 	const folders = listWorkspaceFolderPaths();
 	if (folders.length === 0) {
@@ -317,6 +387,8 @@ function listFolderRouteConfigs(routeFilePath) {
 
 module.exports = {
 	readProject,
+	readProjectFresh,
+	projectCacheFileExists,
 	writeProject,
 	resolveConfigAnchorPath,
 	resolveDefaultJetBrainsProjectPath: resolveJetBrainsProjectPath,
@@ -332,5 +404,7 @@ module.exports = {
 	getSlot1Target,
 	defaultSlotTargets,
 	migrateFromLegacyWorkspace,
-	importLegacyWorkspaceSettings
+	importLegacyWorkspaceSettings,
+	watchProjectCache,
+	disposeProjectWatcher
 };
