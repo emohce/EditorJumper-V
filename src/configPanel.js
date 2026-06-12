@@ -281,14 +281,14 @@ function createConfigurationPanel(context) {
                         const newIDE = message.ide;
                         console.log('Adding new IDE:', newIDE);
                         
-                        // 检查是否存在相同名称的非自定义IDE
-                        const existingIDE = ideConfigurations.find(ide => ide.name === newIDE.name);
+                        // 检查是否存在相同名称的非自定义IDE (case-insensitive)
+                        const existingIDE = globalConfigStore.findByNameIgnoreCase(ideConfigurations, newIDE.name);
                         
                         // 只有在添加新IDE（非编辑现有IDE）且名称已存在时才提示错误
                         if (newIDE.isCustom === false && 
                             ideConfigurations.some(ide => 
                                 ide.isCustom === false && 
-                                ide.name === newIDE.name && 
+                                globalConfigStore.namesEqualIgnoreCase(ide.name, newIDE.name) && 
                                 // 如果是编辑现有IDE，则不检查自身
                                 (!existingIDE || ide !== existingIDE)
                             )) {
@@ -883,7 +883,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             }
 
             function editIDE(name) {
-                const ide = configurations.find(i => i.name === name);
+                const ide = globalConfigStore.findByNameIgnoreCase(configurations, name);
                 if (!ide) return;
 
                 // 设置当前正在编辑的IDE名称
@@ -974,7 +974,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             }
 
             function toggleHidden(name, checkboxId) {
-                const ide = configurations.find(i => i.name === name);
+                const ide = globalConfigStore.findByNameIgnoreCase(configurations, name);
                 if (!ide) return;
 
                 const isHidden = document.getElementById(checkboxId).checked === true;
@@ -1171,7 +1171,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             }
 
             function editVscodeApp(name) {
-                const app = vscodeAppConfigurations.find(a => a.name === name);
+                const app = globalConfigStore.findByNameIgnoreCase(vscodeAppConfigurations, name);
                 if (!app) return;
 
                 currentEditingVscodeApp = name;
@@ -1199,7 +1199,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
                 }
 
                 const isCustom = currentEditingVscodeApp
-                    ? (vscodeAppConfigurations.find(a => a.name === currentEditingVscodeApp) || {}).isCustom === true
+                    ? (globalConfigStore.findByNameIgnoreCase(vscodeAppConfigurations, currentEditingVscodeApp) || {}).isCustom === true
                     : true;
 
                 vscode.postMessage({
@@ -1223,7 +1223,7 @@ function getWebviewContent(ideConfigurations, collapsedSections = { 'jetbrains-s
             }
 
             function toggleVscodeAppHidden(name, checkboxId) {
-                const app = vscodeAppConfigurations.find(a => a.name === name);
+                const app = globalConfigStore.findByNameIgnoreCase(vscodeAppConfigurations, name);
                 if (!app) return;
 
                 const isHidden = document.getElementById(checkboxId).checked === true;

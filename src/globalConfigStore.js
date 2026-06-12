@@ -9,6 +9,39 @@ let cachedMtimeMs = 0;
 let watcher = null;
 let changeListeners = [];
 
+/**
+ * Case-insensitive comparison for app/IDE names
+ * @param {string} a First name
+ * @param {string} b Second name
+ * @returns {boolean} True if names match case-insensitively
+ */
+function namesEqualIgnoreCase(a, b) {
+	if (!a || !b) return false;
+	return a.toLowerCase() === b.toLowerCase();
+}
+
+/**
+ * Find app/IDE in array by name (case-insensitive)
+ * @param {Array} items Array of items with 'name' property
+ * @param {string} name Name to search for
+ * @returns {object|null} Matching item or null
+ */
+function findByNameIgnoreCase(items, name) {
+	if (!items || !name) return null;
+	return items.find(item => namesEqualIgnoreCase(item.name, name));
+}
+
+/**
+ * Find index of app/IDE in array by name (case-insensitive)
+ * @param {Array} items Array of items with 'name' property
+ * @param {string} name Name to search for
+ * @returns {number} Index of matching item or -1
+ */
+function findIndexByNameIgnoreCase(items, name) {
+	if (!items || !name) return -1;
+	return items.findIndex(item => namesEqualIgnoreCase(item.name, name));
+}
+
 function nowIso() {
 	return new Date().toISOString();
 }
@@ -241,7 +274,7 @@ function setCommandPath(name, kind, commandPath) {
 	const apps = readApps(true);
 	const key = kind === 'jetbrains' ? 'jetbrainsApps' : 'vscodeApps';
 	const list = [...(apps[key] || [])];
-	const idx = list.findIndex((item) => item.name === name);
+	const idx = findIndexByNameIgnoreCase(list, name);
 	const entry = idx >= 0 ? { ...list[idx] } : { name, isCustom: false, hidden: false, commandPath: null, updatedAt: null };
 	entry.commandPath = commandPath || null;
 	entry.updatedAt = nowIso();
@@ -257,7 +290,7 @@ function upsertApp(kind, app) {
 	const apps = readApps(true);
 	const key = kind === 'jetbrains' ? 'jetbrainsApps' : 'vscodeApps';
 	const list = [...(apps[key] || [])];
-	const idx = list.findIndex((item) => item.name === app.name);
+	const idx = findIndexByNameIgnoreCase(list, app.name);
 	const entry = {
 		name: app.name,
 		commandPath: app.commandPath ?? null,
@@ -284,7 +317,7 @@ function setHidden(kind, name, hidden) {
 	const apps = readApps(true);
 	const key = kind === 'jetbrains' ? 'jetbrainsApps' : 'vscodeApps';
 	const list = [...(apps[key] || [])];
-	const idx = list.findIndex((item) => item.name === name);
+	const idx = findIndexByNameIgnoreCase(list, name);
 	if (idx < 0) {
 		return apps;
 	}
@@ -378,5 +411,8 @@ module.exports = {
 	migrateFromLegacyUserSettings,
 	importLegacyUserSettings,
 	createDefaultApps,
-	ensureDefaultJetbrainsApps
+	ensureDefaultJetbrainsApps,
+	namesEqualIgnoreCase,
+	findByNameIgnoreCase,
+	findIndexByNameIgnoreCase
 };

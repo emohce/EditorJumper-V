@@ -57,6 +57,7 @@ async function syncProjectConfigFromCache(routeFilePath) {
 function ensureDefaultSlotTargets() {
 	const folders = workspaceRouteUtil.listWorkspaceFolderPaths();
 	const routeTargets = folders.length > 0 ? folders : [null];
+	const ideConfigurations = globalConfigStore.getIdeConfigurations();
 	for (const folder of routeTargets) {
 		const routeFilePath = folder || undefined;
 		const slots = projectConfigStore.getSlotTargets(routeFilePath);
@@ -65,6 +66,13 @@ function ensureDefaultSlotTargets() {
 		if (!next[0] || !next[0].target) {
 			next[0] = { slot: 1, type: 'jetbrains', target: 'IDEA' };
 			changed = true;
+		} else if (next[0].type === 'jetbrains') {
+			// Normalize JetBrains IDE name to match global config case
+			const normalizedConfig = globalConfigStore.findByNameIgnoreCase(ideConfigurations, next[0].target);
+			if (normalizedConfig && normalizedConfig.name !== next[0].target) {
+				next[0].target = normalizedConfig.name;
+				changed = true;
+			}
 		}
 		if (!next[1] || !next[1].target) {
 			next[1] = { slot: 2, type: 'vscode-app', target: 'Cursor' };
@@ -321,7 +329,7 @@ async function activate(context) {
 		const routeFilePath = currentRouteFilePath(uri);
 		const ideConfigurations = globalConfigStore.getIdeConfigurations();
 		let slot1Target = targetOverride || projectConfigStore.getSlot1Target(routeFilePath);
-		let ideConfig = ideConfigurations.find(ide => ide.name === slot1Target);
+		let ideConfig = globalConfigStore.findByNameIgnoreCase(ideConfigurations, slot1Target);
 
 		const slotTargetsForDetect = projectConfigStore.getSlotTargets(routeFilePath);
 		const slot1Configured = slotTargetsForDetect[0] && slotTargetsForDetect[0].target && String(slotTargetsForDetect[0].target).trim();
@@ -330,15 +338,15 @@ async function activate(context) {
 			if (projectPath) {
 				const detectedIDE = detectProjectType(projectPath);
 				if (detectedIDE) {
-					const detectedConfig = ideConfigurations.find(ide => ide.name === detectedIDE);
+					const detectedConfig = globalConfigStore.findByNameIgnoreCase(ideConfigurations, detectedIDE);
 					if (detectedConfig) {
-						slot1Target = detectedIDE;
+						slot1Target = detectedConfig.name;
 						ideConfig = detectedConfig;
 						const slots = projectConfigStore.getSlotTargets(routeFilePath);
-						slots[0] = { slot: 1, type: 'jetbrains', target: detectedIDE };
+						slots[0] = { slot: 1, type: 'jetbrains', target: detectedConfig.name };
 						projectConfigStore.setSlotTargets(slots, routeFilePath);
 						syncProjectConfigFromCache(routeFilePath);
-						vscode.window.showInformationMessage(`Auto-detected project type: ${detectedIDE}`);
+						vscode.window.showInformationMessage(`Auto-detected project type: ${detectedConfig.name}`);
 					}
 				}
 			}
