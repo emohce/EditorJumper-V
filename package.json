@@ -2,7 +2,7 @@
   "name": "EzVsEditorjumper",
   "displayName": "EzEditorJumper-V",
   "description": "A VS Code extension that allows you to seamlessly jump between JetBrains IDEs and other popular code editors (such as VS Code, Cursor, Trae, and Windsurf). It maintains your cursor position and editing context, greatly improving development efficiency in multi-editor environments.",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "publisher": "emohce",
   "repository": {
     "type": "git",
@@ -48,6 +48,10 @@
       {
         "command": "editorjumper.openSlot1",
         "title": "Ez-EditorJumper-V: Open in Slot 1 Editor"
+      },
+      {
+        "command": "editorjumper.openSlot1Fast",
+        "title": "Ez-EditorJumper-V: Open in Slot 1 Editor (Fast Mode)"
       },
       {
         "command": "editorjumper.openSlot2",
@@ -104,11 +108,11 @@
     ],
     "keybindings": [
       {
-        "command": "editorjumper.openInJetBrains",
+        "command": "editorjumper.openSlot1",
         "key": "shift+alt+o"
       },
       {
-        "command": "editorjumper.openInJetBrainsFast",
+        "command": "editorjumper.openSlot1Fast",
         "key": "shift+alt+p"
       },
       {
