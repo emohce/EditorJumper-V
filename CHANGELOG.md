@@ -22,6 +22,12 @@
 ### Changed
 - Changed `selectedIDE` configuration to be project-level (resource scope).
 
+## [2.0.5] - 2026-06-12
+### Fixed
+- Fixed case sensitivity bug causing "Please select a JetBrains IDE first" error when IDE was already configured
+- Added reusable helper functions for case-insensitive IDE name matching (`namesEqualIgnoreCase`, `findByNameIgnoreCase`, `findIndexByNameIgnoreCase`)
+- Updated all IDE/VSCode app lookups to use case-insensitive matching across `extension.js`, `configPanel.js`, and `globalConfigStore.js`
+
 ## [2.0.4] - 2026-06-09
 ### Fixed
 - Register all commands before async init so Windsurf/Devin can resolve `editorjumper.openSlot*`.
