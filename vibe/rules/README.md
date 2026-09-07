@@ -1,25 +1,15 @@
-# EzEditorJumper-V AI Rules
+# ez-editor-jumper-v project rules
 
-Tool: codex
+<!-- codenote-project-router:v1 -->
 
-## Read First
+## Project gates and routes
 
-- CodeNote master: [../../../CzzProj/CodeNote/AiRef/VibePractice/Vibe_Rules/VibeAi.md](../../../CzzProj/CodeNote/AiRef/VibePractice/Vibe_Rules/VibeAi.md)
-- CodeNote rule index: [../../../CzzProj/CodeNote/AiRef/VibePractice/Vibe_Rules/README.md](../../../CzzProj/CodeNote/AiRef/VibePractice/Vibe_Rules/README.md)
-- Project rules: [project.md](project.md)
-- Workflow rules: [workflow.md](workflow.md)
-- Knowledge routing: [knowledge.md](knowledge.md)
+For code, UI, data, build, deployment or runtime work, read the relevant [local context](local-context.md) and its linked owner before acting. It retains this project's SQL, environment, browser identity, preview and real-acceptance constraints. Commands do not grant permission to start services or mutate data. Simple questions need no process preflight.
 
-## Rule Boundary
+- code and business constraints: [project.md](project.md).
+- commands and verification: [workflow.md](workflow.md).
+- durable documentation or recovery: [documentation.md](documentation.md).
+- continuation or current acceptance: [vibe/specs/PROJECT_STATUS.md](../specs/PROJECT_STATUS.md).
+- reusable project knowledge: [vibe/knowledge/README.md](../knowledge/README.md).
 
-- CodeNote stores cross-project AI collaboration rules.
-- This project stores only project-specific stack, commands, paths, business rules, risk areas, and verification notes.
-- Legacy AI rules are preserved under `vibe/knowledge/legacy/` when replaced by this structure.
-
-## Task Closeout
-
-Every AI task must report:
-
-- Verification performed or skipped with reason.
-- Memory routing: none, project memory, error archive, ADR, DB memory, or needs user confirmation.
-- Process document status: not needed, created, updated, compacted, or archived.
+Keep this index and local-context.md project-owned. Generated host entries and global-core.generated.md are updated from CodeNote; do not hand-maintain copies of global procedures.
